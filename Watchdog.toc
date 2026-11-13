@@ -1,0 +1,9 @@
+## Interface: 16001
+## Title: Watchdog
+## Notes: Kills PvE/PvP com drops por mob, honra e EXP/hora, com filtro por periodo.
+## Version: 1.0.0
+## SavedVariables: WatchdogDB
+## SavedVariablesPerCharacter: WatchdogCharDB
+
+Core.lua
+UI.lua
