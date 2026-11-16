@@ -974,23 +974,23 @@ function WD:ColorOneNameplate(unit)
     local np = C_NamePlate.GetNamePlateForUnit(unit)
     local fs = NameplateNameFS(np)
     if not fs or not fs.SetVertexColor then return end
-    local name = UnitName(unit)
-    if name and WD:IsWatched(name) then
+    local name = WD.Clean(UnitName(unit))
+    if type(name) == "string" and WD:IsWatched(name) then
         local col = WatchdogDB.watchColor or C.blue
         fs:SetVertexColor(col[1], col[2], col[3])
     end
 end
 
 function WD:OnNameplateAdded(unit)
-    WD:ColorOneNameplate(unit)
+    pcall(WD.ColorOneNameplate, WD, unit)
 end
 
 function WD:RefreshNameplates()
     if InCombatLockdown and InCombatLockdown() then return end
     if not C_NamePlate or not C_NamePlate.GetNamePlates then return end
     for _, np in ipairs(C_NamePlate.GetNamePlates()) do
-        local unit = np.namePlateUnitToken or (np.UnitFrame and np.UnitFrame.unit)
-        if unit then WD:ColorOneNameplate(unit) end
+        local unit = WD.Clean(np.namePlateUnitToken or (np.UnitFrame and np.UnitFrame.unit))
+        if type(unit) == "string" then pcall(WD.ColorOneNameplate, WD, unit) end
     end
 end
 
@@ -1018,13 +1018,16 @@ local function HookNameplateName()
     if WD._nameHooked then return end
     if type(CompactUnitFrame_UpdateName) ~= "function" or not hooksecurefunc then return end
     hooksecurefunc("CompactUnitFrame_UpdateName", function(frame)
+      pcall(function()
         if not frame or not frame.unit or not frame.name then return end
-        if not tostring(frame.unit):match("nameplate") then return end
-        local name = UnitName(frame.unit)
-        if name and WD:IsWatched(name) and frame.name.SetVertexColor then
+        local unitTok = WD.Clean(frame.unit)
+        if type(unitTok) ~= "string" or not unitTok:find("nameplate", 1, true) then return end
+        local name = WD.Clean(UnitName(unitTok))
+        if type(name) == "string" and WD:IsWatched(name) and frame.name.SetVertexColor then
             local col = WatchdogDB.watchColor or C.blue
             frame.name:SetVertexColor(col[1], col[2], col[3])
         end
+      end)
     end)
     WD._nameHooked = true
 end

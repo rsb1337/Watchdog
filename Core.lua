@@ -3,10 +3,20 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.4.3"
+WD.version = "1.4.4"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
+
+-- Cliente novo: nomes/GUIDs de unidades podem ser "secret values" (principalmente
+-- em combate). Nunca indexar/concatenar um: devolve nil se for secreto.
+local issecret = _G.issecretvalue
+function WD.Clean(v)
+    if v == nil then return nil end
+    if issecret and issecret(v) then return nil end
+    return v
+end
+local Clean = WD.Clean
 
 local GetTime = GetTime
 local strsplit = strsplit
@@ -446,7 +456,8 @@ local function OnXPMessage(msg)
 end
 
 local function SlainIsPlayer(name)
-    return UnitExists("target") and UnitName("target") == name and UnitIsPlayer("target")
+    local n = Clean(UnitName("target"))
+    return UnitExists("target") and n == name and UnitIsPlayer("target")
 end
 
 -- "You have slain Wolf!"
@@ -493,7 +504,7 @@ end
 -- Dano recebido de jogador inimigo (para contar morte PvP).
 local function MarkPvPHit(name)
     lastPvPHit = GetTime()
-    if name and name ~= "" then lastPvPAttacker = name end
+    if type(name) == "string" and name ~= "" then lastPvPAttacker = name end
 end
 
 local function OnHostilePlayerHit()
@@ -519,9 +530,9 @@ local function ScanPvPThreat()
         if UnitIsDeadOrGhost(u) then return end
         local tgt = u .. "target"
         if UnitExists(tgt) and UnitIsUnit(tgt, "player") and UnitAffectingCombat(u) then
-            MarkPvPHit(UnitName(u))
+            MarkPvPHit(Clean(UnitName(u)))
         elseif u == "target" and UnitAffectingCombat("player") and UnitAffectingCombat(u) then
-            MarkPvPHit(UnitName(u))
+            MarkPvPHit(Clean(UnitName(u)))
         end
     end
     check("target")
@@ -551,8 +562,8 @@ end
 -- Aprende o nome de corpos de mobs que vemos (alvo / mouseover).
 local function RememberCorpse(unit)
     if not UnitExists(unit) or not UnitIsDead(unit) or UnitIsPlayer(unit) then return end
-    local guid, name = UnitGUID(unit), UnitName(unit)
-    if guid and name then corpseName[guid] = { name = name, t = GetTime() } end
+    local guid, name = Clean(UnitGUID(unit)), Clean(UnitName(unit))
+    if type(guid) == "string" and type(name) == "string" then corpseName[guid] = { name = name, t = GetTime() } end
 end
 
 local function HasRecentKill(name)
@@ -694,7 +705,8 @@ end
 local function TrimName(s) return (s or ""):match("^%s*(.-)%s*$") end
 
 function WD:IsWatched(name)
-    if not name or not WatchdogDB.watch then return false end
+    name = Clean(name)
+    if type(name) ~= "string" or not WatchdogDB.watch then return false end
     return WatchdogDB.watch[name:lower()] ~= nil
 end
 
@@ -730,8 +742,8 @@ local function CheckRare(unit)
     if not unit or not UnitExists(unit) or UnitIsPlayer(unit) or UnitIsDead(unit) then return end
     local cls = UnitClassification and UnitClassification(unit)
     if cls ~= "rare" and cls ~= "rareelite" then return end
-    local guid, name = UnitGUID(unit), UnitName(unit)
-    if not guid or not name then return end
+    local guid, name = Clean(UnitGUID(unit)), Clean(UnitName(unit))
+    if type(guid) ~= "string" or type(name) ~= "string" then return end
     WatchdogDB.rareNames[name] = true
     if rareSeen[guid] then return end
     rareSeen[guid] = GetTime()
@@ -842,7 +854,7 @@ local function Init()
     for _, e in ipairs(EVENTS) do Register(e) end
     for _, e in ipairs(OPTIONAL_EVENTS) do pcall(ev.RegisterEvent, ev, e) end
 
-    C_Timer.NewTicker(0.5, ScanPvPThreat)
+    C_Timer.NewTicker(0.5, function() pcall(ScanPvPThreat) end)
     C_Timer.NewTicker(60, Prune)
     -- Atualiza XP/hora, ouro/hora e tempo de sessao com a janela aberta.
     C_Timer.NewTicker(5, function() WD:Refresh() end)
@@ -870,15 +882,15 @@ ev:SetScript("OnEvent", function(_, event, ...)
     elseif event == "PLAYER_DEAD" then
         OnPlayerDead()
     elseif event == "PLAYER_TARGET_CHANGED" then
-        RememberCorpse("target")
-        CheckRare("target")
+        pcall(RememberCorpse, "target")
+        pcall(CheckRare, "target")
     elseif event == "UPDATE_MOUSEOVER_UNIT" then
-        RememberCorpse("mouseover")
-        CheckRare("mouseover")
+        pcall(RememberCorpse, "mouseover")
+        pcall(CheckRare, "mouseover")
     elseif event == "PLAYER_REGEN_ENABLED" then
         if WD._cvarPending and WD.MaxNameplateRange then WD:MaxNameplateRange() end
     elseif event == "NAME_PLATE_UNIT_ADDED" then
-        CheckRare(arg1)
+        pcall(CheckRare, arg1)
         if WD.OnNameplateAdded then WD:OnNameplateAdded(arg1) end
     elseif event == "BAG_UPDATE_DELAYED" or event == "BAG_UPDATE" then
         WD:Refresh()
