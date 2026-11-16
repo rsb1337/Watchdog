@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.4.2"
+WD.version = "1.4.3"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -508,31 +508,31 @@ local function IsCreature(guid)
     return kind == "Creature" or kind == "Vehicle"
 end
 
-local slainEventOK = false
-local function OnCombatLog()
-    if not CombatLogGetCurrentEventInfo then return end
-    local ok, _, subevent, _, srcGUID, srcName, srcFlags, _, destGUID, destName = pcall(CombatLogGetCurrentEventInfo)
-    if not ok then return end
-    local isSecret = _G.issecretvalue
-    if isSecret and (isSecret(destGUID) or isSecret(srcFlags) or isSecret(subevent) or isSecret(srcGUID)) then return end
-    if not playerGUID then playerGUID = UnitGUID("player") end
-    -- Cliente sem a mensagem "You have slain": conta o kill de mob (inclusive cinza, sem XP) pelo combat log.
-    if subevent == "PARTY_KILL" and srcGUID == playerGUID and not slainEventOK
-       and type(destGUID) == "string" and type(destName) == "string" and IsCreature(destGUID) then
-        if not MatchPending(pend.xp, destName) then
-            AddPending(pend.slain, destName)
-            CountMobKill(destName)
+-- Este cliente proibe addons de usar o combat log (COMBAT_LOG_EVENT_UNFILTERED
+-- gera ADDON_ACTION_FORBIDDEN). Detecta agressor PvP por unidades visiveis:
+-- jogador inimigo em combate que tem VOCE como alvo (nameplates, alvo, mouseover).
+local function ScanPvPThreat()
+    local function check(u)
+        if not u or not UnitExists(u) or not UnitIsPlayer(u) then return end
+        if UnitIsUnit(u, "player") then return end
+        if not UnitCanAttack("player", u) then return end
+        if UnitIsDeadOrGhost(u) then return end
+        local tgt = u .. "target"
+        if UnitExists(tgt) and UnitIsUnit(tgt, "player") and UnitAffectingCombat(u) then
+            MarkPvPHit(UnitName(u))
+        elseif u == "target" and UnitAffectingCombat("player") and UnitAffectingCombat(u) then
+            MarkPvPHit(UnitName(u))
         end
-        return
     end
-    if destGUID ~= playerGUID then return end
-    if type(subevent) ~= "string" then return end
-    if subevent ~= "SWING_DAMAGE" and not subevent:find("_DAMAGE", 1, true) then return end
-    if type(srcFlags) ~= "number" or not bit then return end
-    if bit.band(srcFlags, COMBATLOG_PLAYER) == 0 then return end
-    if bit.band(srcFlags, COMBATLOG_HOSTILE) == 0 then return end
-    MarkPvPHit(type(srcName) == "string" and srcName or nil)
+    check("target")
+    check("mouseover")
+    if C_NamePlate and C_NamePlate.GetNamePlates then
+        for _, np in ipairs(C_NamePlate.GetNamePlates()) do
+            check(np.namePlateUnitToken or (np.UnitFrame and np.UnitFrame.unit))
+        end
+    end
 end
+WD.ScanPvPThreat = ScanPvPThreat
 
 local function OnPlayerDead()
     if lastPvPHit > 0 and (GetTime() - lastPvPHit) <= PVP_DEATH_WINDOW then
@@ -788,7 +788,6 @@ local OPTIONAL_EVENTS = {
     "CHAT_MSG_COMBAT_HOSTILE_DEATH",
     "CHAT_MSG_COMBAT_HOSTILEPLAYER_HITS",
     "CHAT_MSG_SPELL_HOSTILEPLAYER_DAMAGE",
-    "COMBAT_LOG_EVENT_UNFILTERED",
     "NAME_PLATE_UNIT_ADDED",
     "PLAYER_REGEN_ENABLED",
     "BAG_UPDATE_DELAYED",
@@ -842,8 +841,8 @@ local function Init()
     BuildPatterns()
     for _, e in ipairs(EVENTS) do Register(e) end
     for _, e in ipairs(OPTIONAL_EVENTS) do pcall(ev.RegisterEvent, ev, e) end
-    slainEventOK = ev:IsEventRegistered("CHAT_MSG_COMBAT_HOSTILE_DEATH") and true or false
 
+    C_Timer.NewTicker(0.5, ScanPvPThreat)
     C_Timer.NewTicker(60, Prune)
     -- Atualiza XP/hora, ouro/hora e tempo de sessao com a janela aberta.
     C_Timer.NewTicker(5, function() WD:Refresh() end)
@@ -864,8 +863,6 @@ ev:SetScript("OnEvent", function(_, event, ...)
         OnMoneyMessage(arg1)
     elseif event == "CHAT_MSG_COMBAT_HOSTILEPLAYER_HITS" or event == "CHAT_MSG_SPELL_HOSTILEPLAYER_DAMAGE" then
         OnHostilePlayerHit()
-    elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
-        OnCombatLog()
     elseif event == "LOOT_READY" or event == "LOOT_OPENED" then
         OnLoot()
     elseif event == "PLAYER_XP_UPDATE" then
