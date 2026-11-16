@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.4.1"
+WD.version = "1.4.2"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -503,13 +503,28 @@ end
 -- Deteccao robusta via combat log: qualquer dano de jogador inimigo em voce.
 local COMBATLOG_PLAYER = COMBATLOG_OBJECT_TYPE_PLAYER or 0x00000400
 local COMBATLOG_HOSTILE = COMBATLOG_OBJECT_REACTION_HOSTILE or 0x00000040
+local function IsCreature(guid)
+    local kind = strsplit("-", guid)
+    return kind == "Creature" or kind == "Vehicle"
+end
+
+local slainEventOK = false
 local function OnCombatLog()
     if not CombatLogGetCurrentEventInfo then return end
-    local ok, _, subevent, _, _, srcName, srcFlags, _, destGUID = pcall(CombatLogGetCurrentEventInfo)
+    local ok, _, subevent, _, srcGUID, srcName, srcFlags, _, destGUID, destName = pcall(CombatLogGetCurrentEventInfo)
     if not ok then return end
     local isSecret = _G.issecretvalue
-    if isSecret and (isSecret(destGUID) or isSecret(srcFlags) or isSecret(subevent)) then return end
+    if isSecret and (isSecret(destGUID) or isSecret(srcFlags) or isSecret(subevent) or isSecret(srcGUID)) then return end
     if not playerGUID then playerGUID = UnitGUID("player") end
+    -- Cliente sem a mensagem "You have slain": conta o kill de mob (inclusive cinza, sem XP) pelo combat log.
+    if subevent == "PARTY_KILL" and srcGUID == playerGUID and not slainEventOK
+       and type(destGUID) == "string" and type(destName) == "string" and IsCreature(destGUID) then
+        if not MatchPending(pend.xp, destName) then
+            AddPending(pend.slain, destName)
+            CountMobKill(destName)
+        end
+        return
+    end
     if destGUID ~= playerGUID then return end
     if type(subevent) ~= "string" then return end
     if subevent ~= "SWING_DAMAGE" and not subevent:find("_DAMAGE", 1, true) then return end
@@ -533,11 +548,6 @@ end
 ---------------------------------------------------------------------------
 -- Loot
 ---------------------------------------------------------------------------
-local function IsCreature(guid)
-    local kind = strsplit("-", guid)
-    return kind == "Creature" or kind == "Vehicle"
-end
-
 -- Aprende o nome de corpos de mobs que vemos (alvo / mouseover).
 local function RememberCorpse(unit)
     if not UnitExists(unit) or not UnitIsDead(unit) or UnitIsPlayer(unit) then return end
@@ -770,14 +780,14 @@ local EVENTS = {
     "LOOT_OPENED",
     "CHAT_MSG_MONEY",
     "CHAT_MSG_COMBAT_XP_GAIN",
-    "CHAT_MSG_COMBAT_HOSTILE_DEATH",
     "CHAT_MSG_COMBAT_HONOR_GAIN",
-    "CHAT_MSG_COMBAT_HOSTILEPLAYER_HITS",
-    "CHAT_MSG_SPELL_HOSTILEPLAYER_DAMAGE",
 }
 
 -- Eventos que nem todo cliente tem: registra sem reclamar se falhar.
 local OPTIONAL_EVENTS = {
+    "CHAT_MSG_COMBAT_HOSTILE_DEATH",
+    "CHAT_MSG_COMBAT_HOSTILEPLAYER_HITS",
+    "CHAT_MSG_SPELL_HOSTILEPLAYER_DAMAGE",
     "COMBAT_LOG_EVENT_UNFILTERED",
     "NAME_PLATE_UNIT_ADDED",
     "PLAYER_REGEN_ENABLED",
@@ -832,6 +842,7 @@ local function Init()
     BuildPatterns()
     for _, e in ipairs(EVENTS) do Register(e) end
     for _, e in ipairs(OPTIONAL_EVENTS) do pcall(ev.RegisterEvent, ev, e) end
+    slainEventOK = ev:IsEventRegistered("CHAT_MSG_COMBAT_HOSTILE_DEATH") and true or false
 
     C_Timer.NewTicker(60, Prune)
     -- Atualiza XP/hora, ouro/hora e tempo de sessao com a janela aberta.
