@@ -986,6 +986,7 @@ function WD:OnNameplateAdded(unit)
 end
 
 function WD:RefreshNameplates()
+    if InCombatLockdown and InCombatLockdown() then return end
     if not C_NamePlate or not C_NamePlate.GetNamePlates then return end
     for _, np in ipairs(C_NamePlate.GetNamePlates()) do
         local unit = np.namePlateUnitToken or (np.UnitFrame and np.UnitFrame.unit)
@@ -996,10 +997,19 @@ end
 -- Liga nomes de inimigos e joga o alcance das nameplates no maximo,
 -- para o nome azul aparecer de mais longe possivel.
 function WD:MaxNameplateRange()
-    local function set(k, v) pcall(SetCVar, k, v) end
+    -- SetCVar de nameplate e protegido em combate: nunca chamar la
+    -- (causaria ADDON_ACTION_FORBIDDEN). Adia para quando sair do combate.
+    if InCombatLockdown and InCombatLockdown() then
+        WD._cvarPending = true
+        return
+    end
+    WD._cvarPending = false
+    local function set(k, v)
+        if GetCVar and GetCVar(k) == tostring(v) then return end
+        pcall(SetCVar, k, v)
+    end
     set("nameplateShowEnemies", 1)
     set("nameplateMaxDistance", 41)
-    set("nameplateMaxDistanceenemy", 41)
     if WD.RefreshNameplates then WD:RefreshNameplates() end
 end
 

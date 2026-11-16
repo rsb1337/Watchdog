@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.4.0"
+WD.version = "1.4.1"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -780,6 +780,7 @@ local EVENTS = {
 local OPTIONAL_EVENTS = {
     "COMBAT_LOG_EVENT_UNFILTERED",
     "NAME_PLATE_UNIT_ADDED",
+    "PLAYER_REGEN_ENABLED",
     "BAG_UPDATE_DELAYED",
     "BAG_UPDATE",
 }
@@ -836,7 +837,7 @@ local function Init()
     -- Atualiza XP/hora, ouro/hora e tempo de sessao com a janela aberta.
     C_Timer.NewTicker(5, function() WD:Refresh() end)
     -- Repinta nameplates da lista premium (rede de seguranca).
-    C_Timer.NewTicker(0.25, function() if WD.RefreshNameplates then WD:RefreshNameplates() end end)
+    C_Timer.NewTicker(0.5, function() if WD.RefreshNameplates then WD:RefreshNameplates() end end)
 end
 
 ev:RegisterEvent("ADDON_LOADED")
@@ -866,6 +867,8 @@ ev:SetScript("OnEvent", function(_, event, ...)
     elseif event == "UPDATE_MOUSEOVER_UNIT" then
         RememberCorpse("mouseover")
         CheckRare("mouseover")
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        if WD._cvarPending and WD.MaxNameplateRange then WD:MaxNameplateRange() end
     elseif event == "NAME_PLATE_UNIT_ADDED" then
         CheckRare(arg1)
         if WD.OnNameplateAdded then WD:OnNameplateAdded(arg1) end
