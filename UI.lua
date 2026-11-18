@@ -141,11 +141,20 @@ end
 ---------------------------------------------------------------------------
 -- Helpers visuais
 ---------------------------------------------------------------------------
+-- 1 pixel fisico da tela em unidades do frame (evita borda de 1px sumir em escalas fracionadas)
+local function PixelSize(f)
+    local h
+    if GetPhysicalScreenSize then h = select(2, GetPhysicalScreenSize()) end
+    local es = f.GetEffectiveScale and f:GetEffectiveScale()
+    if type(h) ~= "number" or h < 100 or type(es) ~= "number" or es <= 0 then return 1 end
+    return (768 / h) / es
+end
+
 local function Flat(f, bg, border, alpha)
     f:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Buttons\\WHITE8X8",
-        edgeSize = 1,
+        edgeSize = PixelSize(f),
     })
     f:SetBackdropColor(bg[1], bg[2], bg[3], alpha or 1)
     local b = border or bg
@@ -185,6 +194,9 @@ local function MakeChip(parent, text, width)
     end)
     return b
 end
+
+-- Kit visual compartilhado com outros modulos (menu de configuracao do Assistente).
+WD.UIKit = { C = C, Flat = Flat, FS = FS, MakeChip = MakeChip, BT = BT, FONT = FONT, MEDIA = MEDIA, SIDE_W = SIDE_W, PAD = PAD }
 
 ---------------------------------------------------------------------------
 -- Lista (linhas)
@@ -900,6 +912,8 @@ function WD:ShowReport()
         f:SetPoint("CENTER")
         Flat(f, C.bg, C.border, 0.98)
         f:SetFrameStrata("DIALOG")
+        f:SetToplevel(true)
+        f:HookScript("OnShow", function(self) self:Raise() end)
         f:SetMovable(true)
         f:EnableMouse(true)
         f:RegisterForDrag("LeftButton")
@@ -1064,6 +1078,8 @@ function WD:ShowWatchList()
         f:SetPoint("CENTER")
         Flat(f, C.bg, C.border, 0.98)
         f:SetFrameStrata("DIALOG")
+        f:SetToplevel(true)
+        f:HookScript("OnShow", function(self) self:Raise() end)
         f:SetMovable(true)
         f:EnableMouse(true)
         f:RegisterForDrag("LeftButton")
@@ -1244,16 +1260,24 @@ local function CreateSidebar(f)
     end
 
     -- Rodape: relatorio, nova sessao e versao
+    local commands = MakeChip(side, L.chip_commands, SIDE_W - 28)
+    commands:SetPoint("BOTTOM", side, "BOTTOM", 0, 170)
+    commands:SetScript("OnClick", function() if WD.ToggleCommands then WD:ToggleCommands() end end)
+
+    local settings = MakeChip(side, L.chip_settings, SIDE_W - 28)
+    settings:SetPoint("BOTTOM", side, "BOTTOM", 0, 140)
+    settings:SetScript("OnClick", function() if WD.ToggleConfig then WD:ToggleConfig() end end)
+
     local premium = MakeChip(side, L.chip_premium, SIDE_W - 28)
-    premium:SetPoint("BOTTOM", side, "BOTTOM", 0, 100)
+    premium:SetPoint("BOTTOM", side, "BOTTOM", 0, 110)
     premium:SetScript("OnClick", function() WD:ShowWatchList() end)
 
     local report = MakeChip(side, L.chip_report, SIDE_W - 28)
-    report:SetPoint("BOTTOM", side, "BOTTOM", 0, 70)
+    report:SetPoint("BOTTOM", side, "BOTTOM", 0, 80)
     report:SetScript("OnClick", function() WD:ShowReport() end)
 
     local newSession = MakeChip(side, L.chip_newsession, SIDE_W - 28)
-    newSession:SetPoint("BOTTOM", side, "BOTTOM", 0, 40)
+    newSession:SetPoint("BOTTOM", side, "BOTTOM", 0, 50)
     newSession:SetScript("OnClick", function()
         WD:StartNewSession()
     end)
@@ -1278,6 +1302,8 @@ local function CreateMainFrame()
     end
     Flat(f, C.bg, C.border, 0.97)
     f:SetFrameStrata("HIGH")
+    f:SetToplevel(true)
+    f:HookScript("OnShow", function(self) self:Raise() end)
     f:SetClampedToScreen(true)
     f:SetMovable(true)
     f:EnableMouse(true)
@@ -1636,7 +1662,10 @@ local function CreateMinimapButton()
     local function UpdatePosition()
         local a = math.rad(WatchdogDB.minimapAngle or 210)
         mb:ClearAllPoints()
-        mb:SetPoint("CENTER", Minimap, "CENTER", math.cos(a) * 80, math.sin(a) * 80)
+        -- raio acompanha o tamanho real do minimapa (mesma regra dos outros botoes: na borda do anel)
+        local w = Minimap:GetWidth()
+        local r = (w and w > 10) and (w / 2 + 5) or 80
+        mb:SetPoint("CENTER", Minimap, "CENTER", math.cos(a) * r, math.sin(a) * r)
     end
 
     mb:SetScript("OnDragStart", function(self)
@@ -1733,6 +1762,10 @@ SlashCmdList.WATCHDOG = function(msg)
         ToggleBar("sgold")
     elseif cmd == "igoldbar" then
         ToggleBar("igold")
+    elseif cmd == "commands" or cmd == "comandos" or cmd == "cmds" then
+        if WD.ToggleCommands then WD:ToggleCommands() end
+    elseif cmd == "config" or cmd == "opcoes" or cmd == "opções" or cmd == "menu" or cmd == "assist" then
+        if WD.ToggleConfig then WD:ToggleConfig() end
     elseif cmd == "premium" or cmd == "lista" or cmd == "watchlist" then
         WD:ShowWatchList()
     elseif cmd == "nameplates" or cmd == "plaquinhas" or cmd == "alcance" then
@@ -1759,7 +1792,7 @@ SlashCmdList.WATCHDOG = function(msg)
         WD:Toggle("hist")
     elseif cmd == "inventario" or cmd == "inventário" or cmd == "bolsa" or cmd == "inventory" or cmd == "bag" then
         WD:Toggle("inv")
-    elseif cmd == "alertas" or cmd == "alerta" then
+    elseif cmd == "alertas" or cmd == "alerta" or cmd == "alerts" or cmd == "alert" or cmd == "warning" or cmd == "warnings" then
         AlertsCommand(rest)
     elseif cmd == "debug" then
         WD.debug = not WD.debug
@@ -1772,7 +1805,7 @@ SlashCmdList.WATCHDOG = function(msg)
             L.help_open, L.help_new, L.help_report, L.help_hist, L.help_inv,
             L.help_alerts, L.help_premium, L.help_watch, L.help_unwatch, L.help_nameplates,
             L.help_minimap, L.help_goldbar, L.help_expbar, L.help_sgoldbar, L.help_igoldbar,
-            L.help_lang, L.help_status, L.help_debug,
+            L.help_config, L.help_lang, L.help_status, L.help_debug,
         }) do print(line) end
     else
         WD:Toggle()
