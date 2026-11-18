@@ -118,7 +118,7 @@ WD:RegisterLocale("enUS", {
     report_mobline = "%d. %s - %d kills - %s (%s/kill)",
     btn_close = "Close", btn_refresh = "Refresh",
     -- chips laterais
-    chip_premium = "Premium list", chip_report = "Report", chip_newsession = "New session",
+    chip_commands = "Commands", chip_settings = "Settings", chip_premium = "Premium list", chip_report = "Report", chip_newsession = "New session",
     -- lista premium
     watch_title = "Premium list",
     watch_hint = "Mobs on the list get a blue name on the nameplate. Type a name or target the mob and use Add.",
@@ -159,7 +159,7 @@ WD:RegisterLocale("enUS", {
     alerts_drop = "  drop: %s (min quality %d = %s)",
     alerts_rare = "  rare mob: %s",
     alerts_sound = "  sound: %s",
-    alerts_usage = "usage: /wd alertas [drop | rare | sound | 0-5]",
+    alerts_usage = "usage: /wd alerts [drop | rare | sound | 0-5]",
     enabled = "enabled", disabled = "disabled",
     -- ajuda
     help_header = "Watchdog commands:",
@@ -168,7 +168,7 @@ WD:RegisterLocale("enUS", {
     help_report = "  /wd report - session report to copy",
     help_hist = "  /wd history - open the session history",
     help_inv = "  /wd inventory - open the inventory",
-    help_alerts = "  /wd alertas [drop | rare | sound | 0-5] - drop/rare mob alerts",
+    help_alerts = "  /wd alerts [drop | rare | sound | 0-5] - drop/rare mob alerts",
     help_premium = "  /wd premium - open the premium list (blue mob names)",
     help_watch = "  /wd watch <name> (or target and /wd watch) - add mob to premium list",
     help_unwatch = "  /wd unwatch <name> - remove mob from premium list",
@@ -247,7 +247,7 @@ WD:RegisterLocale("ptBR", {
     report_topmobs = "Melhores mobs (por valor):",
     report_mobline = "%d. %s - %d kills - %s (%s/kill)",
     btn_close = "Fechar", btn_refresh = "Atualizar",
-    chip_premium = "Lista premium", chip_report = "Relatório", chip_newsession = "Nova sessão",
+    chip_commands = "Comandos", chip_settings = "Configurações", chip_premium = "Lista premium", chip_report = "Relatório", chip_newsession = "Nova sessão",
     watch_title = "Lista premium",
     watch_hint = "Mobs da lista ficam com o nome azul na plaquinha. Digite ou mire no mob e use Adicionar.",
     watch_count = "%d na lista",
