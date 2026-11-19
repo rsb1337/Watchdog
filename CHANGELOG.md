@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.6
+
+### Correcoes
+- CC de alvo unico (Sap, Polymorph, Shackle Undead, Mind Control, Banish, Seduction, Hibernate, Scare Beast): usar em outro alvo remove o aviso do anterior, como acontece no jogo.
+
 ## 1.6.5
 
 ### Correcoes

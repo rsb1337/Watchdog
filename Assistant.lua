@@ -451,6 +451,9 @@ local function DebugCC(...)
     if WD.debug then print("|cff66ccff[Watchdog CC]|r", ...) end
 end
 
+-- feiticos que so podem estar em UM alvo por vez (por conjurador)
+local CC_SINGLE = { sap = true, poly = true, shackle = true, mcontrol = true, banish = true, seduce = true, hibern = true, scareb = true }
+
 local ccFrames = {}
 local ccActive = {}
 local lastCP, lastCPTime = 0, 0
@@ -591,6 +594,15 @@ local function StartCC(def, unit, spellName, dur, test)
         if np then
             local tok = Clean(np.namePlateUnitToken or (np.UnitFrame and np.UnitFrame.unit))
             if type(tok) == "string" then entry.token = tok end
+        end
+    end
+    entry.key = def.key
+    -- CCs de alvo unico (Sap, Polymorph...): usar em outro alvo remove o anterior,
+    -- entao so um pode ficar na tela por feitico
+    if def.key and CC_SINGLE[def.key] and not test then
+        for i = #ccActive, 1, -1 do
+            local e = ccActive[i]
+            if e.key == def.key and not e.test then ReleaseCC(e) end
         end
     end
     -- substitui um CC anterior do mesmo alvo/feitico
