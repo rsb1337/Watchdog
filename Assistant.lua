@@ -1184,7 +1184,7 @@ local function CheckSpot(tries)
         end
         local low = {}
         for i, it in ipairs(items) do
-            if (not it.minLevel or lvl >= it.minLevel) and counts[i] <= (it.min or 0) then
+            if (not it.minLevel or lvl >= it.minLevel) and counts[i] < math.max(1, it.min or 0) then
                 low[#low + 1] = string.format("%s %d/%d", ItemLabel(it), counts[i], it.min or 0)
             end
         end

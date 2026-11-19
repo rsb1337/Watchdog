@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.7
+
+### Correcoes
+- Aviso de consumiveis: agora so avisa quando a quantidade esta ABAIXO do minimo definido (antes avisava tambem com a quantidade exatamente igual, ex.: 10/10).
+- Textos das configuracoes atualizados para explicar a regra.
+
 ## 1.6.6
 
 ### Correcoes
