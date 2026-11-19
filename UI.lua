@@ -751,18 +751,16 @@ RenderDetail = function(r, isWin)
     SetTile(6, 3, 3, 58, L.d_xp_quest, questXP and Num(questXP) or dash, C.purple,
         part or (r.quests and string.format(L.d_quests_n, r.quests) or L.d_nodata), true)
 
-    -- 3) Ouro: puro / inventario (vendor) / na AH / provavel
+    -- 3) Ouro: coletado (puro + itens no vendor) / leilao (AH) / provavel
     local g = WD:GoldSummary(r)
     if g.legacy then
-        SetTile(7, 1, 4, 116, L.d_gold_pure, dash, C.gold, nil, true)
-        SetTile(8, 2, 4, 116, L.d_gold_inv, dash, C.gold, nil, true)
-        SetTile(9, 3, 4, 116, L.d_gold_ah, dash, C.gold, nil, true)
-        SetTile(17, 4, 4, 116, L.d_gold_prob, GoldFmt(g.probable), C.gold, L.d_gold_legacy, true)
+        SetTile(7, 1, 3, 116, L.d_gold_coll, dash, C.gold, nil, true)
+        SetTile(8, 2, 3, 116, L.d_gold_ah, dash, C.gold, nil, true)
+        SetTile(9, 3, 3, 116, L.d_gold_prob, GoldFmt(g.probable), C.gold, L.d_gold_legacy, true)
     else
-        SetTile(7, 1, 4, 116, L.d_gold_pure, GoldFmt(g.coin), C.gold, nil, true)
-        SetTile(8, 2, 4, 116, L.d_gold_inv, GoldFmt(g.inv), C.gold, nil, true)
-        SetTile(9, 3, 4, 116, L.d_gold_ah, GoldFmt(g.ah), C.gold, nil, true)
-        SetTile(17, 4, 4, 116, L.d_gold_prob, GoldFmt(g.probable), C.gold, r.goldPartial and L.d_partial or nil, true)
+        SetTile(7, 1, 3, 116, L.d_gold_coll, GoldFmt(g.coin + g.inv), C.gold, nil, true)
+        SetTile(8, 2, 3, 116, L.d_gold_ah, GoldFmt(g.ah), C.gold, nil, true)
+        SetTile(9, 3, 3, 116, L.d_gold_prob, GoldFmt(g.probable), C.gold, r.goldPartial and L.d_partial or nil, true)
     end
 
     -- 4) Grind x fora do grind
@@ -782,11 +780,11 @@ RenderDetail = function(r, isWin)
         SetTile(12, 3, 3, 174, L.d_quests, r.quests and Num(r.quests) or dash, C.purple, nil, true)
     end
 
-    -- 5) Detalhe do tempo fora do grind
-    SetTile(13, 1, 4, 232, L.d_flight, t and D(t.flight) or dash, C.text, nil, true)
-    SetTile(14, 2, 4, 232, L.d_afk, t and D(t.afk) or dash, C.text, nil, true)
-    SetTile(15, 3, 4, 232, L.d_craft, t and D(t.craft) or dash, C.text, nil, true)
-    SetTile(16, 4, 4, 232, L.d_other, t and D((t.other or 0) + (t.dead or 0)) or dash, C.text,
+    -- 5) Detalhe do tempo fora do grind (craft entra em "Outros")
+    local other = t and ((t.other or 0) + (t.dead or 0) + (t.craft or 0)) or nil
+    SetTile(13, 1, 3, 232, L.d_flight, t and D(t.flight) or dash, C.text, nil, true)
+    SetTile(14, 2, 3, 232, L.d_afk, t and D(t.afk) or dash, C.text, nil, true)
+    SetTile(16, 3, 3, 232, L.d_other, t and D(other) or dash, C.text,
         (t and (t.dead or 0) > 0) and string.format(L.d_dead_sub, FormatDuration(t.dead)) or nil, true)
 end
 
@@ -845,7 +843,7 @@ local function SetChipVisibility()
     for _, b in ipairs(ui.viewButtons) do b:SetShown(state.tab == "inv") end
     ui.sortBtn:SetShown(state.tab == "pve" and not state.mob)
     for _, b in ipairs(ui.subChips) do b:SetShown(grp == "pve"); b:SetActive(b.key == state.tab) end
-    ui.reportChip:SetShown(grp == "pve")
+    ui.back:ClearAllPoints(); ui.back:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, rowY)   -- na linha do segundo menu
     for _, b in ipairs(ui.histChips) do
         b:SetShown(state.tab == "hist")
         local v = state.histView
@@ -1459,12 +1457,12 @@ local function CreateSidebar(f)
     local half = math.floor((SIDE_W - 26) / 2)
     local newSession = MakeChip(side, L.chip_newsession, half)
     newSession:SetPoint("BOTTOMLEFT", side, "BOTTOMLEFT", 10, 46)
-    newSession.text:SetFont(FONT, 11, "")
+    newSession.text:SetFont(FONT, 10, "")
     newSession:SetScript("OnClick", function() WD:StartNewSession() end)
 
     local commands = MakeChip(side, L.chip_commands, half)
     commands:SetPoint("LEFT", newSession, "RIGHT", 6, 0)
-    commands.text:SetFont(FONT, 11, "")
+    commands.text:SetFont(FONT, 10, "")
     commands:SetScript("OnClick", function() if WD.ToggleCommands then WD:ToggleCommands() end end)
 
     local dot = side:CreateTexture(nil, "ARTWORK")
@@ -1586,10 +1584,6 @@ local function CreateMainFrame()
         ui.histChips[#ui.histChips + 1] = b
         hprev = b
     end
-
-    ui.reportChip = MakeChip(f, L.chip_report, 96)
-    ui.reportChip:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, -76)
-    ui.reportChip:SetScript("OnClick", function() WD:ShowReport() end)
 
     -- Periodos (PvE / PvP / EXP)
     ui.periodButtons = {}

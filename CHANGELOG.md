@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.13
+
+### Mudancas
+- Botao Report removido da aba PvE.
+- Botao Back agora fica na mesma linha do segundo menu (24h / 7 days / 30 days), longe do Active session.
+- Fonte dos botoes New session / Commands reduzida para nao encostar nas bordas.
+- Ouro da sessao: o quadro Inventory foi removido; o primeiro quadro agora e "Collected gold" (gold puro + valor de vendor dos itens coletados). Ficam 3 quadros: Collected gold, Auction house e Probable.
+- Tempo fora do grind: o quadro Crafting foi removido (o tempo de craft entra em "Other"); a linha ficou com 3 colunas.
+
 ## 1.6.12
 
 ### Mudancas
