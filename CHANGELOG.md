@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.11
+
+### Mudancas
+- Ouro da sessao agora mostra 4 valores: Gold puro (moedas recebidas), Inventario (valor de vendor dos itens), Leilao/AH (preco que voce colocou nos itens listados) e Provavel (soma dos tres). O "Gold gasto" foi removido.
+- O addon registra o preco de cada item que voce lista na AH; a listagem sai da conta quando vende (dinheiro chega pelo correio), cancela ou expira.
+
 ## 1.6.10
 
 ### Melhorias

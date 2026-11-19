@@ -750,18 +750,19 @@ RenderDetail = function(r, isWin)
     SetTile(6, 3, 3, 58, L.d_xp_quest, questXP and Num(questXP) or dash, C.gold,
         part or (r.quests and string.format(L.d_quests_n, r.quests) or L.d_nodata), true)
 
-    -- 3) Ouro: adquirido (virou ouro + itens no vendor) e gasto
+    -- 3) Ouro: puro / inventario (vendor) / na AH / provavel
     local g = WD:GoldSummary(r)
-    local gsub
     if g.legacy then
-        gsub = L.d_gold_legacy
+        SetTile(7, 1, 4, 116, L.d_gold_pure, dash, C.gold, nil, true)
+        SetTile(8, 2, 4, 116, L.d_gold_inv, dash, C.text, nil, true)
+        SetTile(9, 3, 4, 116, L.d_gold_ah, dash, C.blue, nil, true)
+        SetTile(17, 4, 4, 116, L.d_gold_prob, GoldFmt(g.probable), C.green, L.d_gold_legacy, true)
     else
-        gsub = string.format(L.d_gold_split, GoldFmt(g.coin))
-        if g.bag then gsub = gsub .. string.format(L.d_gold_bag, GoldFmt(g.bag, true)) end
-        if r.goldPartial then gsub = L.d_partial end
+        SetTile(7, 1, 4, 116, L.d_gold_pure, GoldFmt(g.coin), C.gold, nil, true)
+        SetTile(8, 2, 4, 116, L.d_gold_inv, GoldFmt(g.inv), C.text, nil, true)
+        SetTile(9, 3, 4, 116, L.d_gold_ah, GoldFmt(g.ah), C.blue, nil, true)
+        SetTile(17, 4, 4, 116, L.d_gold_prob, GoldFmt(g.probable), C.green, r.goldPartial and L.d_partial or nil, true)
     end
-    SetTile(7, 1, 2, 116, L.d_gold_in, GoldFmt(g.acquired), C.gold, gsub, true)
-    SetTile(8, 2, 2, 116, L.d_gold_out, g.spent and GoldFmt(g.spent) or dash, C.red, nil, true)
 
     -- 4) Grind x fora do grind
     local t = r.t

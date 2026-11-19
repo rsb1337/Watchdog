@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.6.10"
+WD.version = "1.6.11"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -98,7 +98,7 @@ local function EntryFromBucket(s, start, stop)
     local pvp = s.pvp or {}
     local t = {}
     for _, k in ipairs(T_KEYS) do t[k] = math.floor((s.t and s.t[k]) or 0) end
-    return {
+    local e = {
         start = start, stop = stop,
         kills = BucketKills(s),
         xp = s.xp or 0,
@@ -115,6 +115,8 @@ local function EntryFromBucket(s, start, stop)
         value = WD:BucketValue(s),
         t = t,
     }
+    e.ahPrice, e.ahVendor = WD:AHTotals(start)
+    return e
 end
 
 -- Guarda a sessao que acabou no historico.
@@ -154,22 +156,27 @@ function WD:RecordOf(e, now)
         quests = e.quests, levels = e.levels or 0,
         pvpKills = e.pvpKills or 0, deaths = e.deaths or 0, honor = e.honor or 0,
         money = e.money or 0, income = e.income, spent = e.spent, bagDelta = e.bagDelta, value = e.value or 0, t = e.t,
+        ahPrice = e.ahPrice or 0, ahVendor = e.ahVendor or 0,
     }
     return r
 end
 
--- Ouro da sessao: adquirido = o que virou ouro (entradas na carteira: loot, vendor, AH, quests...)
--- + variacao do valor de vendor dos itens (bolsas/banco); gasto = saidas da carteira.
+-- Ouro da sessao (4 numeros):
+--   puro      = moedas que entraram na carteira (loot dos mobs, vendas, quests...)
+--   inventario= variacao do valor de VENDOR dos itens (bolsas/banco/correio), sem os itens que estao na AH
+--   ah        = preco que voce colocou nos itens listados na AH nesta sessao
+--   provavel  = puro + inventario + ah
 function WD:GoldSummary(r)
     if r.income == nil then
-        return { acquired = r.value or 0, legacy = true }
+        return { probable = r.value or 0, legacy = true }
     end
-    local bag = r.bagDelta
+    local inv = (r.bagDelta or 0) - (r.ahVendor or 0)
+    local ah = r.ahPrice or 0
     return {
         coin = r.income,
-        bag = bag,
-        acquired = math.max(0, r.income + (bag or 0)),
-        spent = r.spent or 0,
+        inv = inv,
+        ah = ah,
+        probable = math.max(0, r.income + inv + ah),
     }
 end
 
@@ -187,7 +194,7 @@ end
 
 -- Janela por tempo (ex.: ultimas 24h): soma as sessoes (proporcional ao trecho que cai na
 -- janela) e calcula o tempo offline = janela (desde a 1a sessao registrada) - tempo online.
-local SUM_KEYS = { "kills", "xp", "killXP", "questXP", "quests", "levels", "pvpKills", "deaths", "honor", "money", "income", "spent", "bagDelta", "value" }
+local SUM_KEYS = { "kills", "xp", "killXP", "questXP", "quests", "levels", "pvpKills", "deaths", "honor", "money", "income", "spent", "bagDelta", "value", "ahPrice", "ahVendor" }
 function WD:WindowRecord(hours)
     pcall(WD.UpdateBagValue, WD)
     local now = time()
@@ -454,6 +461,63 @@ local function TransitTake(v)
     end
 end
 
+-- Itens listados na AH: guardamos o preco pedido e o valor de vendor de cada listagem.
+-- Cada uma pertence a sessao em que foi criada (sid = inicio da sessao).
+local function AHList()
+    WatchdogCharDB.ahList = WatchdogCharDB.ahList or {}
+    return WatchdogCharDB.ahList
+end
+local function AHPurge()
+    local now, l = time(), AHList()
+    for i = #l, 1, -1 do if (l[i].exp or 0) < now then table.remove(l, i) end end
+end
+function WD:AHTotals(sid)
+    AHPurge()
+    local price, vendor = 0, 0
+    for _, e in ipairs(AHList()) do
+        if e.sid == sid then price = price + e.price; vendor = vendor + e.vendor end
+    end
+    return price, vendor
+end
+local function AHAdd(count, price, vendor, runTime, name)
+    if not price or price <= 0 then return end
+    local hours = ({ [1] = 12, [2] = 24, [3] = 48 })[runTime] or 48
+    local l = AHList()
+    l[#l + 1] = { t = time(), sid = WatchdogCharDB.sessionStart, count = count or 1, price = price,
+        vendor = vendor or 0, name = name, exp = time() + hours * 3600 + 3600 }
+    WD:QueueBagValue()
+end
+-- Dinheiro de venda recebido (descontada a taxa de 5%): remove das listagens, da mais antiga pra mais nova.
+-- Retorna o valor de vendor que saiu e quanto do dinheiro foi explicado.
+local function AHTakeMoney(d)
+    AHPurge()
+    local l, vend, used = AHList(), 0, 0
+    while d > 0 and l[1] do
+        local e = l[1]
+        local net = e.price * 0.95
+        if net <= d then
+            d = d - net; used = used + net; vend = vend + e.vendor; table.remove(l, 1)
+        else
+            local f = d / net
+            vend = vend + e.vendor * f; used = used + d
+            e.price = e.price * (1 - f); e.vendor = e.vendor * (1 - f); d = 0
+        end
+    end
+    return vend, used
+end
+-- Itens que voltaram pra bolsa (cancelou/expirou): tira das listagens pelo valor de vendor.
+local function AHTakeVendor(v)
+    local l = AHList()
+    while v > 0 and l[1] do
+        local e = l[1]
+        if e.vendor <= v then v = v - e.vendor; table.remove(l, 1)
+        else
+            local f = v / e.vendor
+            e.price = e.price * (1 - f); e.vendor = e.vendor - v; v = 0
+        end
+    end
+end
+
 local bankOpen, ahOpen, mailOpen = false, false, false
 local lastBags
 -- Valor de vendor de tudo que e seu: bolsas + banco (ultimo visto) + itens em transito.
@@ -472,7 +536,7 @@ function WD:UpdateBagValue()
     if lastBags then
         local d = scan.value - lastBags
         if d < 0 and (ahOpen or mailOpen) then TransitAdd(-d)
-        elseif d > 0 and mailOpen then TransitTake(d) end
+        elseif d > 0 and mailOpen then TransitTake(d); AHTakeVendor(d) end
     end
     lastBags = scan.value
     local total = scan.value + (WatchdogCharDB.bankValue or 0) + TransitTotal()
@@ -482,7 +546,67 @@ end
 
 -- Dinheiro que chega pelo correio (venda na AH etc.) quita o valor em transito.
 function WD:OnMailMoney(d)
-    if mailOpen and d > 0 then TransitTake(d) end
+    if not (mailOpen and d > 0) then return end
+    local vend, used = AHTakeMoney(d)
+    if used > 0 then TransitTake(vend) end
+    if d - used > 0 then TransitTake(d - used) end
+end
+
+-- Captura do que voce lista na AH (preco pedido + valor de vendor). Cliente com API antiga
+-- (PostAuction) ou nova (C_AuctionHouse); o que existir e usado.
+local sellCache
+local function UnitVendor(idOrName)
+    if not idOrName then return 0 end
+    local ok, _, _, _, _, _, _, _, _, _, _, sell = pcall(GetItemInfo, idOrName)
+    return (ok and tonumber(sell)) or 0
+end
+function WD:OnSellSlot()
+    sellCache = nil
+    if not GetAuctionSellItemInfo then return end
+    local ok, name, _, count, _, _, _, _, stackCount, totalCount, itemID = pcall(GetAuctionSellItemInfo)
+    if ok and name and name ~= "" then
+        sellCache = { name = name, count = count or 1, totalCount = totalCount, itemID = itemID }
+    end
+end
+local function OnPostAuction(minBid, buyout, runTime, stackSize, numStacks)
+    local s = sellCache
+    if not s then WD:OnSellSlot(); s = sellCache end
+    numStacks = tonumber(numStacks) or 1
+    stackSize = tonumber(stackSize) or (s and s.count) or 1
+    local per = (tonumber(buyout) and buyout > 0) and buyout or tonumber(minBid) or 0
+    local count = stackSize * numStacks
+    local unit = s and UnitVendor(s.itemID or s.name) or 0
+    AHAdd(count, per * numStacks, unit * count, runTime, s and s.name)
+end
+local function OnPostItemNew(itemLocation, duration, quantity, bid, buyout)
+    local id
+    if C_Item and C_Item.GetItemID and itemLocation then
+        local ok, v = pcall(C_Item.GetItemID, itemLocation)
+        if ok then id = v end
+    end
+    quantity = tonumber(quantity) or 1
+    local price = (tonumber(buyout) and buyout > 0) and buyout or tonumber(bid) or 0
+    AHAdd(quantity, price, UnitVendor(id) * quantity, 3, nil)
+end
+local function OnPostCommodity(itemLocation, duration, quantity, unitPrice)
+    local id
+    if C_Item and C_Item.GetItemID and itemLocation then
+        local ok, v = pcall(C_Item.GetItemID, itemLocation)
+        if ok then id = v end
+    end
+    quantity = tonumber(quantity) or 1
+    AHAdd(quantity, (tonumber(unitPrice) or 0) * quantity, UnitVendor(id) * quantity, 3, nil)
+end
+local ahHooked
+function WD:SetupAHHooks()
+    if ahHooked then return end
+    ahHooked = true
+    if PostAuction then pcall(hooksecurefunc, "PostAuction", function(...) pcall(OnPostAuction, ...) end) end
+    if C_AuctionHouse then
+        if C_AuctionHouse.PostItem then pcall(hooksecurefunc, C_AuctionHouse, "PostItem", function(...) pcall(OnPostItemNew, ...) end) end
+        if C_AuctionHouse.PostCommodity then pcall(hooksecurefunc, C_AuctionHouse, "PostCommodity", function(...) pcall(OnPostCommodity, ...) end) end
+    end
+    if WD.ev then pcall(WD.ev.RegisterEvent, WD.ev, "NEW_AUCTION_UPDATE") end
 end
 
 local bagTimer
@@ -1079,6 +1203,7 @@ end
 -- Eventos
 ---------------------------------------------------------------------------
 local ev = CreateFrame("Frame")
+WD.ev = ev
 
 local EVENTS = {
     "PLAYER_ENTERING_WORLD",
@@ -1215,6 +1340,8 @@ ev:SetScript("OnEvent", function(_, event, ...)
     elseif event == "BANKFRAME_CLOSED" then
         pcall(WD.UpdateBagValue, WD)
         bankOpen = false
+    elseif event == "NEW_AUCTION_UPDATE" then
+        pcall(WD.OnSellSlot, WD)
     elseif event == "AUCTION_HOUSE_SHOW" then
         pcall(WD.UpdateBagValue, WD)
         ahOpen = true
@@ -1250,6 +1377,7 @@ ev:SetScript("OnEvent", function(_, event, ...)
     elseif event == "PLAYER_ENTERING_WORLD" then
         playerGUID = UnitGUID("player")
         petGUID = UnitGUID("pet")
+        pcall(WD.SetupAHHooks, WD)
         if arg1 then
             -- Nova sessao a cada login (um /reload mantem a sessao).
             NewSession()
