@@ -1182,15 +1182,21 @@ local function CheckSpot(tries)
             if tries < 4 then C_Timer.After(2.5, function() CheckSpot(tries + 1) end) end
             return
         end
-        local low = {}
+        local low, lowIcon = {}, nil
         for i, it in ipairs(items) do
             if (not it.minLevel or lvl >= it.minLevel) and counts[i] < math.max(1, it.min or 0) then
+                if not lowIcon and it.id and it.id ~= "@ammo" then
+                    local ok, ic
+                    if C_Item and C_Item.GetItemIconByID then ok, ic = pcall(C_Item.GetItemIconByID, it.id) end
+                    if not (ok and ic) and GetItemIcon then ok, ic = pcall(GetItemIcon, it.id) end
+                    if ok and ic then lowIcon = ic end
+                end
                 low[#low + 1] = string.format("%s %d/%d", ItemLabel(it), counts[i], it.min or 0)
             end
         end
         if #low > 0 and Cooldown("cons", sp.key) then
             WD:BigWarning(L.as_cons_title, string.format(L.as_cons_body, place, table.concat(low, ", ")),
-                "Interface\\Icons\\Ability_Poisons", { 0.6, 0.5, 1 })
+                lowIcon or "Interface\\Icons\\INV_Misc_Bag_08", { 0.6, 0.5, 1 })
         end
     end
 end

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.8
+
+### Correcoes
+- O aviso de consumiveis agora mostra o icone do item em falta (antes sempre o icone do veneno).
+
 ## 1.6.7
 
 ### Correcoes
