@@ -569,11 +569,16 @@ local function CCUpdate()
                 f:ClearAllPoints()
                 if np then
                     f:SetPoint("BOTTOM", np, "TOP", 0, 8)
-                else
+                    f:Show()
+                elseif e.test or not e.token then
+                    -- so o botao de teste usa a posicao fixa na tela
                     f:SetPoint("TOP", UIParent, "TOP", (fallbackIdx * (size + 12)) - 0, -300)
                     fallbackIdx = fallbackIdx + 1
+                    f:Show()
+                else
+                    -- alvo real sem nameplate (longe ou fora de vista): esconde; o tempo continua correndo
+                    f:Hide()
                 end
-                f:Show()
             end
         end
     end

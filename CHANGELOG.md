@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.9
+
+### Correcoes
+- Timer de CC: quando o alvo some da tela ou fica longe (sem nameplate), o icone nao aparece mais no meio da tela. Ele so e mostrado sobre a cabeca do alvo; o tempo continua correndo e o icone volta quando a nameplate reaparece.
+
 ## 1.6.8
 
 ### Correcoes
