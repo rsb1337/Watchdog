@@ -22,6 +22,7 @@ local DEFAULTS = {
     bigScale = 100,
     buff = { on = true, warnSec = 60, minDur = 5, expired = true, poisons = true, names = {} },
     cc = { on = true, dr = true, size = 48, cats = { stun = true, incap = true, fear = true, root = true, silence = true, other = true }, spells = {} },
+    dots = { on = true, size = 28, warn = 3, spells = {} },
     repair = { on = true, pct = 40 },
     food = { on = true, count = 10 },
     cons = { on = true, min = 10, byClass = {} },
@@ -65,6 +66,18 @@ function WD:Cfg()
         cfg.cons.legacy = cfg.cons.legacy or {}
         for _, n in ipairs(cfg.cons.names) do cfg.cons.legacy[#cfg.cons.legacy + 1] = { name = n, min = cfg.cons.min or 10 } end
         cfg.cons.names = nil
+    end
+    -- buffs curtos importantes da classe (uma vez por classe)
+    cfg.buff.seeded = cfg.buff.seeded or {}
+    local cls = ClassFileEarly()
+    if cls and not cfg.buff.seeded[cls] then
+        cfg.buff.seeded[cls] = true
+        local BUFF_PRESETS = { ROGUE = { "Slice and Dice", "Adrenaline Rush", "Blade Flurry" }, WARRIOR = { "Battle Shout" } }
+        for _, n in ipairs(BUFF_PRESETS[cls] or {}) do
+            local have = false
+            for _, e in ipairs(cfg.buff.names) do if e:lower() == n:lower() then have = true end end
+            if not have then cfg.buff.names[#cfg.buff.names + 1] = n end
+        end
     end
     return cfg
 end
@@ -284,7 +297,10 @@ local function ScanBuffs()
                 s.icon = icon
                 local rem = exp - now
                 s.lastRem = rem
-                if rem <= (c.warnSec or 60) and rem > 0 and not s.warned then
+                -- buffs curtos (ex: Slice and Dice) avisam perto do fim, nao assim que sao aplicados
+                local thr = c.warnSec or 60
+                if dur <= thr * 2 then thr = math.min(8, math.max(4, dur * 0.4)) end
+                if rem <= thr and rem > 0 and not s.warned then
                     s.warned = true
                     WD:BigWarning(string.format(L.as_buff_soon, name, math.floor(rem + 0.5)), nil, icon, { 1, 0.6, 0.1 })
                 end
@@ -729,6 +745,190 @@ function WD:TestCC()
 end
 
 ---------------------------------------------------------------------------
+-- 2b) Debuffs / DoTs seus no alvo (fileira de icones pequenos embaixo da plaquinha)
+---------------------------------------------------------------------------
+-- en = nome do debuff (ingles); dur = duracao aproximada, so usada se o jogo nao deixar ler a aura
+local DOT_DEFS = {
+    ROGUE   = { { key = "rupture", en = "Rupture", dur = 16 }, { key = "garrote", en = "Garrote", dur = 18 },
+                { key = "expose", en = "Expose Armor", dur = 30 }, { key = "hemo", en = "Hemorrhage", dur = 15 },
+                { key = "dpoison", en = "Deadly Poison", dur = 12 } },
+    WARLOCK = { { key = "corruption", en = "Corruption", dur = 18 }, { key = "agony", en = "Curse of Agony", dur = 24 },
+                { key = "immolate", en = "Immolate", dur = 15 }, { key = "siphon", en = "Siphon Life", dur = 30 },
+                { key = "cweak", en = "Curse of Weakness", dur = 120 }, { key = "creck", en = "Curse of Recklessness", dur = 120 },
+                { key = "celem", en = "Curse of the Elements", dur = 300 }, { key = "ctongues", en = "Curse of Tongues", dur = 30 },
+                { key = "cdoom", en = "Curse of Doom", dur = 60 } },
+    PRIEST  = { { key = "swp", en = "Shadow Word: Pain", dur = 18 }, { key = "plague", en = "Devouring Plague", dur = 24 },
+                { key = "vampemb", en = "Vampiric Embrace", dur = 60 }, { key = "holyfire", en = "Holy Fire", dur = 10 } },
+    MAGE    = { { key = "fireball", en = "Fireball", dur = 8 }, { key = "pyro", en = "Pyroblast", dur = 12 } },
+    DRUID   = { { key = "moonfire", en = "Moonfire", dur = 12 }, { key = "rake", en = "Rake", dur = 9 },
+                { key = "rip", en = "Rip", dur = 12 }, { key = "ff", en = "Faerie Fire", dur = 40 },
+                { key = "demroar", en = "Demoralizing Roar", dur = 30 } },
+    WARRIOR = { { key = "rend", en = "Rend", dur = 21 }, { key = "sunder", en = "Sunder Armor", dur = 30 },
+                { key = "demshout", en = "Demoralizing Shout", dur = 30 }, { key = "tclap", en = "Thunder Clap", dur = 10 },
+                { key = "hamstring", en = "Hamstring", dur = 15 }, { key = "deepw", en = "Deep Wounds", dur = 12 } },
+    HUNTER  = { { key = "serpent", en = "Serpent Sting", dur = 15 }, { key = "hmark", en = "Hunter's Mark", dur = 120 },
+                { key = "wingclip", en = "Wing Clip", dur = 10 }, { key = "viper", en = "Viper Sting", dur = 8 },
+                { key = "scorpid", en = "Scorpid Sting", dur = 20 } },
+    PALADIN = { { key = "jol", en = "Judgement of Light", dur = 10 }, { key = "jow", en = "Judgement of Wisdom", dur = 10 },
+                { key = "joj", en = "Judgement of Justice", dur = 10 } },
+    SHAMAN  = { { key = "flameshock", en = "Flame Shock", dur = 12 } },
+}
+
+local function MyDots() return DOT_DEFS[ClassFileEarly() or ""] or {} end
+
+local dotFrames = {}
+local dotRow
+local dotEst = {}          -- guid -> { key -> exp } (estimativa por cast, so se a aura nao for legivel)
+local dotTest
+
+local function GetDotRow()
+    if dotRow then return dotRow end
+    dotRow = CreateFrame("Frame", nil, UIParent)
+    dotRow:SetFrameStrata("HIGH")
+    dotRow:SetSize(10, 10)
+    dotRow:Hide()
+    return dotRow
+end
+
+local function GetDotFrame(i)
+    local f = dotFrames[i]
+    if f then return f end
+    f = CreateFrame("Frame", nil, GetDotRow())
+    f.border = f:CreateTexture(nil, "BACKGROUND")
+    f.border:SetTexture("Interface\\Buttons\\WHITE8X8")
+    f.border:SetPoint("TOPLEFT", -2, 2)
+    f.border:SetPoint("BOTTOMRIGHT", 2, -2)
+    f.icon = f:CreateTexture(nil, "ARTWORK")
+    f.icon:SetAllPoints()
+    f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    f.time = f:CreateFontString(nil, "OVERLAY")
+    f.time:SetFont(FONT, 12, "THICKOUTLINE")
+    f.time:SetPoint("BOTTOM", f, "BOTTOM", 0, -2)
+    dotFrames[i] = f
+    return f
+end
+
+local function DotMatches(auraName, en)
+    return type(auraName) == "string" and auraName:sub(1, #en) == en
+end
+
+local function DotNameplate()
+    if C_NamePlate and C_NamePlate.GetNamePlateForUnit then
+        local ok, np = pcall(C_NamePlate.GetNamePlateForUnit, "target")
+        if ok then return np end
+    end
+end
+
+local function DotsUpdate()
+    local c = WD:Cfg().dots
+    local row = GetDotRow()
+    local list = {}
+    local now = GetTime()
+    if c.on then
+        local defs = MyDots()
+        if dotTest and now < dotTest then
+            for i = 1, math.min(3, #defs) do
+                local d = defs[i]
+                local ic = select(2, SpellInfo(d.en)) or "Interface\\Icons\\INV_Misc_QuestionMark"
+                list[#list + 1] = { icon = ic, rem = (dotTest - now) + (i - 1) * 4 }
+            end
+        elseif UnitExists("target") and UnitCanAttack("player", "target") and not UnitIsDead("target") and #defs > 0 then
+            local g = Clean(UnitGUID("target"))
+            local found, unreadable = {}, false
+            for i = 1, 40 do
+                local n, icon, dur, exp, src, ok = AuraAt("target", i, "HARMFUL")
+                if not ok then break end
+                if type(n) ~= "string" then
+                    unreadable = true
+                elseif src == "player" and type(exp) == "number" and exp > 0 then
+                    for _, d in ipairs(defs) do
+                        if c.spells[d.key] ~= false and not found[d.key] and DotMatches(n, d.en) then
+                            found[d.key] = true
+                            list[#list + 1] = { icon = icon, rem = exp - now, order = _ }
+                        end
+                    end
+                end
+            end
+            if unreadable and type(g) == "string" and dotEst[g] then
+                for i, d in ipairs(defs) do
+                    local e = dotEst[g][d.key]
+                    if e and c.spells[d.key] ~= false and not found[d.key] and e.exp > now then
+                        list[#list + 1] = { icon = e.icon, rem = e.exp - now, order = i }
+                    end
+                end
+            end
+            table.sort(list, function(a, b) return (a.order or 0) < (b.order or 0) end)
+        end
+    end
+    local n = #list
+    WD.dotsShown = n
+    if n == 0 then
+        row:Hide()
+        for _, f in ipairs(dotFrames) do f:Hide() end
+        return
+    end
+    local size = c.size or 28
+    local gap = 6
+    local total = n * size + (n - 1) * gap
+    row:SetSize(total, size)
+    row:ClearAllPoints()
+    local np = DotNameplate()
+    if np then
+        row:SetPoint("TOP", np, "BOTTOM", 0, -6)
+    else
+        row:SetPoint("TOP", UIParent, "TOP", 0, -370)
+    end
+    row:Show()
+    for i = 1, n do
+        local f = GetDotFrame(i)
+        local e = list[i]
+        f:SetSize(size, size)
+        f:ClearAllPoints()
+        f:SetPoint("LEFT", row, "LEFT", (i - 1) * (size + gap), 0)
+        f.icon:SetTexture(e.icon)
+        f.time:SetFont(FONT, math.max(10, math.floor(size * 0.42)), "THICKOUTLINE")
+        local rem = e.rem
+        f.time:SetText(rem >= 60 and string.format("%dm", math.floor(rem / 60 + 0.5)) or (rem >= 10 and string.format("%d", rem) or string.format("%.1f", rem)))
+        if rem <= (c.warn or 3) then
+            f.time:SetTextColor(1, 0.3, 0.3)
+            f.border:SetVertexColor(1, 0.25, 0.25)
+        else
+            f.time:SetTextColor(1, 0.9, 0.3)
+            f.border:SetVertexColor(0.07, 0.08, 0.1)
+        end
+        f:Show()
+    end
+    for i = n + 1, #dotFrames do dotFrames[i]:Hide() end
+end
+
+-- estimativa por cast (so e usada se o jogo esconder as auras do alvo)
+local function OnDotCast(_, spellID)
+    if not UnitExists("target") then return end
+    local name, icon = SpellInfo(spellID)
+    if type(name) ~= "string" then return end
+    for _, d in ipairs(MyDots()) do
+        if DotMatches(name, d.en) then
+            local g = Clean(UnitGUID("target"))
+            if type(g) == "string" then
+                dotEst[g] = dotEst[g] or {}
+                dotEst[g][d.key] = { exp = GetTime() + d.dur, icon = icon }
+            end
+            return
+        end
+    end
+end
+
+function WD:TestDots()
+    dotTest = GetTime() + 12
+    DotsUpdate()
+end
+
+C_Timer.NewTicker(0.2, function()
+    if not WatchdogDB then return end
+    SafeRun("dots", DotsUpdate)
+end)
+
+---------------------------------------------------------------------------
 -- 3/4/5) Reparo, comida e consumiveis (locais aprendidos + cidades)
 ---------------------------------------------------------------------------
 local CITY_MAPS = { [1453] = true, [1455] = true, [1457] = true, [1454] = true, [1456] = true, [1458] = true }
@@ -834,9 +1034,14 @@ local function CountFood()
 end
 
 local function ItemName(itemID, link)
+    -- 1) cache salvo (nomes ja vistos em outras sessoes: nao depende do jogo ja ter carregado o item)
+    local cached = WatchdogDB and WatchdogDB.items and WatchdogDB.items[itemID]
+    if cached and cached.n then return cached.n end
+    -- 2) API do jogo
     local name
     if C_Item and C_Item.GetItemNameByID then name = C_Item.GetItemNameByID(itemID) end
     if not name and GetItemInfo then name = GetItemInfo(link or itemID) end
+    if name and WD.CacheItem then pcall(WD.CacheItem, WD, itemID, name) end
     return name
 end
 
@@ -900,8 +1105,13 @@ end
 
 local function CountConsumables(items)
     local counts = {}
+    local pending = false
     local lvl = UnitLevel and UnitLevel("player") or 80
-    for i = 1, #items do counts[i] = 0 end
+    local needName = false
+    for i = 1, #items do
+        counts[i] = 0
+        if items[i].kind ~= "ammo" and not items[i].id then needName = true end
+    end
     ForEachBagItem(function(itemID, link, count)
         local nm
         local ammo
@@ -913,11 +1123,15 @@ local function CountConsumables(items)
                 if want.id == itemID then counts[i] = counts[i] + count end
             else
                 nm = nm or ItemName(itemID, link)
-                if nm and nm:lower():find(want.name:lower(), 1, true) then counts[i] = counts[i] + count end
+                if not nm then
+                    -- o jogo ainda nao carregou o nome deste item: nao da pra contar certo agora
+                    pending = true
+                    if C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, itemID) end
+                elseif nm:lower():find(want.name:lower(), 1, true) then counts[i] = counts[i] + count end
             end
         end
     end)
-    return counts, lvl
+    return counts, lvl, (pending and needName)
 end
 
 local spotCooldown = {}
@@ -929,7 +1143,8 @@ local function Cooldown(kind, key)
     return true
 end
 
-local function CheckSpot()
+local function CheckSpot(tries)
+    tries = tonumber(tries) or 0
     local c = WD:Cfg()
     local sp = SpotInfo()
     local place = (sp.name and sp.name ~= "") and sp.name or L.as_place_unknown
@@ -949,7 +1164,12 @@ local function CheckSpot()
     end
     local items = WD:ConsItems()
     if c.cons.on and (sp.craft or sp.food or sp.repair) and #items > 0 then
-        local counts, lvl = CountConsumables(items)
+        local counts, lvl, pending = CountConsumables(items)
+        -- Itens ainda sem nome carregado (logo apos logar): espera e conta de novo, em vez de avisar errado.
+        if pending then
+            if tries < 4 then C_Timer.After(2.5, function() CheckSpot(tries + 1) end) end
+            return
+        end
         local low = {}
         for i, it in ipairs(items) do
             if (not it.minLevel or lvl >= it.minLevel) and counts[i] <= (it.min or 0) then
@@ -961,6 +1181,18 @@ local function CheckSpot()
                 "Interface\\Icons\\Ability_Poisons", { 0.6, 0.5, 1 })
         end
     end
+end
+
+-- /wd consumiveis: mostra a contagem atual de cada item vigiado (pra conferir os avisos).
+function WD:PrintConsumables()
+    local items = WD:ConsItems()
+    local counts, lvl, pending = CountConsumables(items)
+    print("|cffffd100Watchdog:|r " .. L.as_cons_title)
+    for i, it in ipairs(items) do
+        local note = (it.minLevel and lvl < it.minLevel) and (" (lvl " .. it.minLevel .. ")") or ""
+        print(string.format("  %s: %d / %d%s", ItemLabel(it), counts[i], it.min or 0, note))
+    end
+    if pending then print("  ...") end
 end
 
 local lastSpot
@@ -1139,6 +1371,7 @@ ev:SetScript("OnEvent", function(_, event, ...)
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
         local unit = ...
         if unit == "player" or unit == "pet" then pcall(OnCCCast, select(2, ...)) end
+        if unit == "player" then pcall(OnDotCast, select(2, ...)) end
     elseif event == "ZONE_CHANGED" or event == "ZONE_CHANGED_NEW_AREA" or event == "ZONE_CHANGED_INDOORS" then
         OnZone()
     elseif event == "BAG_UPDATE_DELAYED" then
@@ -1175,88 +1408,34 @@ end)
 local cf
 
 local PAGES = {
-    { key = "general", labelK = "cfg_page_general" },
-    { key = "buffs",   labelK = "cfg_page_buffs" },
-    { key = "cc",      labelK = "cfg_page_cc" },
-    { key = "repair",  labelK = "cfg_page_repair" },
-    { key = "food",    labelK = "cfg_page_food" },
-    { key = "cons",    labelK = "cfg_page_cons" },
-    { key = "alerts",  labelK = "cfg_page_alerts" },
+    { key = "general", labelK = "cfg_page_general", subK = "sub_general" },
+    { key = "buffs",   labelK = "cfg_page_buffs", subK = "sub_buffs" },
+    { key = "cc",      labelK = "cfg_page_cc", subK = "sub_cc" },
+    { key = "dots",    labelK = "cfg_page_dots", subK = "sub_dots" },
+    { key = "repair",  labelK = "cfg_page_repair", subK = "sub_repair" },
+    { key = "food",    labelK = "cfg_page_food", subK = "sub_food" },
+    { key = "cons",    labelK = "cfg_page_cons", subK = "sub_cons" },
+    { key = "alerts",  labelK = "cfg_page_alerts", subK = "sub_alerts" },
 }
 
-local function BuildConfig()
+local function BuildConfig(host, left)
     local K = WD.UIKit
-    if not K then return nil end
+    if not K or not host then return nil end
     local C, Flat, FS, MakeChip, BT2, MEDIA = K.C, K.Flat, K.FS, K.MakeChip, K.BT, K.MEDIA
     local SIDE_W, PAD = K.SIDE_W or 170, K.PAD or 20
-    local FRAME_W, FRAME_H = 680, 470
-    local CONTENT_W = FRAME_W - SIDE_W - PAD * 2
+    local CONTENT_W = 740 - SIDE_W - PAD * 2
 
-    local f = CreateFrame("Frame", "WatchdogConfigFrame", UIParent, BT2)
-    f:SetSize(FRAME_W, FRAME_H)
-    f:SetPoint("CENTER", 20, 0)
-    Flat(f, C.bg, C.border, 0.97)
-    f:SetFrameStrata("DIALOG")
-    f:SetToplevel(true)
-    f:HookScript("OnShow", function(self) self:Raise() end)
-    f:SetClampedToScreen(true)
-    f:SetMovable(true)
-    f:EnableMouse(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    -- Painel embutido na janela principal (aba ALERTAS)
+    local f = CreateFrame("Frame", nil, host)
+    f:SetAllPoints(host)
     f:Hide()
-    tinsert(UISpecialFrames, "WatchdogConfigFrame")
     f.refreshers = {}
     f.tabs = {}
     f.pages = {}
 
-    -- Barra lateral (igual a da janela principal)
-    local side = CreateFrame("Frame", nil, f)
-    side:SetPoint("TOPLEFT", 1, -1)
-    side:SetPoint("BOTTOMLEFT", 1, 1)
-    side:SetWidth(SIDE_W)
-    local line = side:CreateTexture(nil, "ARTWORK")
-    line:SetPoint("TOPRIGHT"); line:SetPoint("BOTTOMRIGHT"); line:SetWidth(1)
-    line:SetColorTexture(1, 1, 1, 0.07)
-    local wordmark = side:CreateTexture(nil, "ARTWORK")
-    wordmark:SetTexture(MEDIA .. "wordmark")
-    wordmark:SetSize(136, 17)
-    wordmark:SetPoint("TOPLEFT", 17, -24)
-    local mark = side:CreateTexture(nil, "BACKGROUND")
-    mark:SetTexture(MEDIA .. "emblem")
-    mark:SetSize(100, 100)
-    mark:SetPoint("BOTTOM", side, "BOTTOM", 0, 60)
-    mark:SetAlpha(0.14)
-
-    local title = FS(f, 22, C.text, "LEFT", "")
-    title:SetPoint("TOPLEFT", f, "TOPLEFT", SIDE_W + PAD, -22)
-    local summary = FS(f, 12, C.dim, "LEFT")
-    summary:SetPoint("TOPLEFT", f, "TOPLEFT", SIDE_W + PAD, -52)
-    do
-        local okc, cname, cfile = pcall(UnitClass, "player")
-        local txt = L.cfg_title
-        if okc and cname and cfile then
-            local col = RAID_CLASS_COLORS and RAID_CLASS_COLORS[cfile]
-            local hex = col and string.format("%02x%02x%02x", col.r * 255, col.g * 255, col.b * 255) or "ffffff"
-            txt = txt .. "   |cff9ca3af-|r   " .. L.cfg_class .. ": |cff" .. hex .. cname .. "|r"
-        end
-        summary:SetText(txt)
-    end
-
-    local close = CreateFrame("Button", nil, f)
-    close:SetSize(26, 26)
-    close:SetPoint("TOPRIGHT", -10, -10)
-    close.text = FS(close, 16, C.mute, "CENTER")
-    close.text:SetPoint("CENTER", 0, 1)
-    close.text:SetText("x")
-    close:SetScript("OnEnter", function(self) self.text:SetTextColor(C.red[1], C.red[2], C.red[3]) end)
-    close:SetScript("OnLeave", function(self) self.text:SetTextColor(C.mute[1], C.mute[2], C.mute[3]) end)
-    close:SetScript("OnClick", function() f:Hide() end)
-
     local area = CreateFrame("Frame", nil, f)
-    area:SetPoint("TOPLEFT", f, "TOPLEFT", SIDE_W + PAD, -86)
-    area:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PAD, PAD)
+    area:SetPoint("TOPLEFT", host, "TOPLEFT", left, -112)
+    area:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -PAD, PAD)
 
     ---------------------------------------------------------------- widgets
     local function NewPage(key)
@@ -1551,6 +1730,21 @@ local function BuildConfig()
     end
     ChipRow(p, L.cfg_test, 90, function() WD:TestCC() end)
 
+    p = NewPage("dots")
+    Toggle(p, L.cfg_dots_on, function() return c().dots.on end, function(v) c().dots.on = v end)
+    Slider(p, L.cfg_dots_size, 16, 48, 2, function() return c().dots.size end, function(v) c().dots.size = v end)
+    Slider(p, L.cfg_dots_warn, 0, 10, 1, function() return c().dots.warn end, function(v) c().dots.warn = v end)
+    local mydots = MyDots()
+    if #mydots == 0 then
+        Text(p, L.cfg_dots_none, 40)
+    else
+        for _, d in ipairs(mydots) do
+            local key = d.key
+            Toggle(p, d.en, function() return c().dots.spells[key] ~= false end, function(v) c().dots.spells[key] = v end, 28)
+        end
+    end
+    ChipRow(p, L.cfg_test, 90, function() WD:TestDots() end)
+
     p = NewPage("repair")
     Toggle(p, L.cfg_repair_on, function() return c().repair.on end, function(v) c().repair.on = v end)
     Slider(p, L.cfg_repair_pct, 5, 100, 5, function() return c().repair.pct end, function(v) c().repair.pct = v end)
@@ -1585,42 +1779,20 @@ local function BuildConfig()
     local function ShowPage(key)
         for k, pg in pairs(f.pages) do pg:SetShown(k == key) end
         for k, b in pairs(f.tabs) do b:SetActive(k == key) end
-        for _, pdef in ipairs(PAGES) do if pdef.key == key then title:SetText(L[pdef.labelK]) end end
         f.current = key
     end
+    -- Sub-menu horizontal (chips) no topo
     local prev
     for _, pdef in ipairs(PAGES) do
         local key = pdef.key
-        local b = CreateFrame("Button", nil, side)
-        b:SetSize(SIDE_W - 20, 32)
-        if prev then b:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -3) else b:SetPoint("TOPLEFT", 10, -62) end
-        b.hl = b:CreateTexture(nil, "HIGHLIGHT"); b.hl:SetAllPoints(); b.hl:SetColorTexture(1, 1, 1, 0.05)
-        b.sel = b:CreateTexture(nil, "BACKGROUND"); b.sel:SetAllPoints(); b.sel:SetColorTexture(1, 1, 1, 0.06); b.sel:Hide()
-        b.bar = b:CreateTexture(nil, "ARTWORK"); b.bar:SetPoint("TOPLEFT"); b.bar:SetPoint("BOTTOMLEFT"); b.bar:SetWidth(3)
-        b.bar:SetColorTexture(C.red[1], C.red[2], C.red[3], 1); b.bar:Hide()
-        b.text = FS(b, 14, C.mute, "LEFT", "")
-        b.text:SetPoint("LEFT", 16, 0)
-        b.text:SetText(L[pdef.labelK])
-        b.SetActive = function(self, on)
-            self.active = on
-            self.sel:SetShown(on)
-            self.bar:SetShown(on)
-            if on then self.text:SetTextColor(1, 1, 1) else self.text:SetTextColor(C.mute[1], C.mute[2], C.mute[3]) end
-        end
+        local b = MakeChip(f, L[pdef.subK] or L[pdef.labelK], 60)
+        local okw, tw = pcall(function() return b.text:GetStringWidth() end)
+        b:SetWidth(math.max(44, ((okw and tw) or 40) + 18))
+        if prev then b:SetPoint("LEFT", prev, "RIGHT", 4, 0) else b:SetPoint("TOPLEFT", host, "TOPLEFT", left, -76) end
         b:SetScript("OnClick", function() ShowPage(key) end)
-        b:SetScript("OnEnter", function(self) if not self.active then self.text:SetTextColor(0.82, 0.84, 0.86) end end)
-        b:SetScript("OnLeave", function(self) if not self.active then self.text:SetTextColor(C.mute[1], C.mute[2], C.mute[3]) end end)
         f.tabs[key] = b
         prev = b
     end
-
-    local dot = side:CreateTexture(nil, "ARTWORK")
-    dot:SetSize(7, 7)
-    dot:SetPoint("BOTTOMLEFT", 20, 17)
-    dot:SetColorTexture(0.2, 0.83, 0.6, 1)
-    local ver = FS(side, 11, C.dim, "LEFT")
-    ver:SetPoint("LEFT", dot, "RIGHT", 7, 0)
-    ver:SetText("v" .. (WD.version or ""))
 
     f.ShowPage = ShowPage
     f:SetScript("OnShow", function()
@@ -1628,6 +1800,12 @@ local function BuildConfig()
         ShowPage(f.current or "general")
     end)
     return f
+end
+
+function WD:CreateConfigPanel(host, left)
+    WD:Cfg()
+    if not cf then cf = BuildConfig(host, left) end
+    return cf
 end
 
 function WD:RefreshConfig()
@@ -1640,7 +1818,7 @@ end
 -- 7) Janela de comandos (mesmo visual do Watchdog)
 ---------------------------------------------------------------------------
 local cmdF
-local CMD_KEYS = { "help_open", "help_config", "help_new", "help_report", "help_hist", "help_inv", "help_alerts",
+local CMD_KEYS = { "help_open", "help_config", "help_new", "help_report", "help_hist", "help_cons", "help_session", "help_wizard", "help_inv", "help_alerts",
     "help_premium", "help_watch", "help_unwatch", "help_nameplates", "help_minimap", "help_goldbar", "help_expbar",
     "help_sgoldbar", "help_igoldbar", "help_lang", "help_status", "help_debug" }
 
@@ -1772,7 +1950,5 @@ end
 
 function WD:ToggleConfig()
     WD:Cfg()
-    if not cf then cf = BuildConfig() end
-    if not cf then return end
-    if cf:IsShown() then cf:Hide() else cf:Show() end
+    WD:Toggle("alerts")
 end

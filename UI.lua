@@ -34,12 +34,31 @@ local PERIODS = {
 }
 
 local TABS = {
-    { key = "pve",  labelK = "tab_pve",  titleK = "title_pve" },
-    { key = "pvp",  labelK = "tab_pvp",  titleK = "title_pvp" },
-    { key = "xp",   labelK = "tab_xp",   titleK = "title_xp" },
-    { key = "inv",  labelK = "tab_inv",  titleK = "title_inv" },
-    { key = "hist", labelK = "tab_hist", titleK = "title_hist" },
+    { key = "pve",    titleK = "title_pve" },
+    { key = "xp",     titleK = "title_xp" },
+    { key = "inv",    titleK = "title_inv" },
+    { key = "hist",   titleK = "title_hist" },
+    { key = "pvp",    titleK = "title_pvp" },
+    { key = "alerts", titleK = "title_alerts" },
+    { key = "black",  titleK = "title_black" },
 }
+-- Menu lateral: grupos. O grupo PvE tem sub-menu (mobs / EXP / inventario / historico).
+local GROUPS = {
+    { key = "pve",    labelK = "tab_pve" },
+    { key = "pvp",    labelK = "tab_pvp" },
+    { key = "alerts", labelK = "tab_alerts" },
+    { key = "black",  labelK = "tab_black" },
+}
+local PVE_SUBS = {
+    { key = "pve",  labelK = "sub_mobs" },
+    { key = "xp",   labelK = "tab_xp" },
+    { key = "inv",  labelK = "tab_inv" },
+    { key = "hist", labelK = "tab_hist" },
+}
+local function GroupOf(tab)
+    if tab == "pve" or tab == "xp" or tab == "inv" or tab == "hist" then return "pve" end
+    return tab
+end
 
 local SORTS = {
     { key = "kills",   labelK = "sort_kills" },
@@ -53,7 +72,7 @@ local INV_VIEWS = {
     { key = "list", labelK = "inv_list" },
 }
 
-local FRAME_W, FRAME_H = 680, 470
+local FRAME_W, FRAME_H = 740, 498
 local SIDE_W = 170
 local PAD = 20
 local CONTENT_W = FRAME_W - SIDE_W - PAD * 2   -- 470
@@ -66,6 +85,7 @@ local SLOT_COLS = 12
 local state = { tab = "pve", period = "session", mob = nil, sort = "kills", invView = "bag" }
 local frame
 local ui = {}
+local BuildBlackPanel -- definido mais abaixo (usado por WD:Render)
 local rows = {}
 local tiles = {}
 local slots = {}
@@ -393,7 +413,7 @@ local function GetTile(i)
     t.accent:SetHeight(2)
 
     t.value = FS(t, 22, C.text, "LEFT", "OUTLINE")
-    t.value:SetPoint("TOPLEFT", 12, -12)
+    t.value:SetPoint("TOPLEFT", 12, -10)
     t.label = FS(t, 10, C.dim, "LEFT")
     t.label:SetPoint("BOTTOMLEFT", 12, 9)
     t.sub = FS(t, 10, C.mute, "RIGHT")
@@ -403,8 +423,10 @@ local function GetTile(i)
     return t
 end
 
-local function SetTile(i, col, cols, y, label, value, color, sub)
+local function SetTile(i, col, cols, y, label, value, color, sub, compact)
     local t = GetTile(i)
+    t:SetHeight(compact and 52 or 62)
+    t.value:SetFont(FONT, compact and 18 or 22, "OUTLINE")
     local w = (CONTENT_W - (cols - 1) * GAP) / cols
     t:ClearAllPoints()
     t:SetPoint("TOPLEFT", ui.info, "TOPLEFT", (col - 1) * (w + GAP), -y)
@@ -440,13 +462,11 @@ end
 
 local function RenderXP(data)
     local s = WD:GetXPStats()
-    ui.summary:SetText(PeriodLabel())
+    ui.summary:SetText(WatchdogCharDB.sessionStart and (L.session_since .. date("%H:%M", WatchdogCharDB.sessionStart) .. ")") or L.period_session)
 
-    SetTile(1, 1, 2, 0,  L.t_xp_period, Num(data.xp or 0), C.text)
-    SetTile(2, 2, 2, 0,  L.t_xp_hour,   Num(math.floor(s.perHour)), C.green,
-        L.period_session .. " " .. FormatDuration(s.elapsed))
-    SetTile(3, 1, 2, 72, L.t_xp_session,  Num(s.sessionXP), C.text)
-    SetTile(4, 2, 2, 72, L.t_levels, tostring(s.levels), C.gold)
+    SetTile(1, 1, 3, 0, L.t_xp_session, Num(s.sessionXP), C.text)
+    SetTile(2, 2, 3, 0, L.t_xp_hour,    Num(math.floor(s.perHour)), C.green, FormatDuration(s.elapsed))
+    SetTile(3, 3, 3, 0, L.t_levels,     tostring(s.levels), C.gold)
 
     ui.xpLabel:Show()
     ui.xpBar:Show()
@@ -462,9 +482,9 @@ local function RenderXP(data)
         ui.xpPct:SetText(string.format("%s / %s  (%.1f%%)", Num(s.cur), Num(s.max), frac * 100))
 
         local rested = (s.rested and s.rested > 0) and (L.rested_prefix .. Num(s.rested)) or nil
-        SetTile(5, 1, 3, 200, L.t_remaining,  Num(s.remaining), C.text, rested)
-        SetTile(6, 2, 3, 200, L.t_time_level,  FormatDuration(s.timeToLevel), C.text)
-        SetTile(7, 3, 3, 200, L.t_kills_level,  s.killsToLevel and Num(s.killsToLevel) or "-", C.text,
+        SetTile(5, 1, 3, 130, L.t_remaining,  Num(s.remaining), C.text, rested)
+        SetTile(6, 2, 3, 130, L.t_time_level,  FormatDuration(s.timeToLevel), C.text)
+        SetTile(7, 3, 3, 130, L.t_kills_level,  s.killsToLevel and Num(s.killsToLevel) or "-", C.text,
             s.avgKill and ("~" .. Num(math.floor(s.avgKill)) .. " XP/kill") or nil)
     end
 end
@@ -678,7 +698,94 @@ local function SessionLine(i, o)
         left = o.label .. Gray("  ·  " .. FormatDuration(dur)),
         right = right,
         hint = hint,
+        onClick = o.onClick,
     })
+end
+
+local RenderDetail
+
+-- Ouro em uma unica unidade ("28.7g"), sem prata/cobre.
+local function GoldFmt(copper, signed)
+    copper = copper or 0
+    local g = copper / 10000
+    local s
+    if math.abs(g) >= 1000 then s = Num(math.floor(math.abs(g) + 0.5)) .. "g" else s = string.format("%.1fg", math.abs(g)) end
+    if g < 0 then s = "-" .. s elseif signed then s = "+" .. s end
+    return s
+end
+
+local function Pct(a, b)
+    if not a or not b or b <= 0 then return "" end
+    return string.format("%d%%", math.floor(a / b * 100 + 0.5))
+end
+
+RenderDetail = function(r, isWin)
+    HideInfo()
+    local dur = math.max(1, r.dur or 0)
+    local dash = "-"
+    local function D(sec) return sec and FormatDuration(sec) or dash end
+    -- cabecalho
+    if isWin then
+        local hrs = r.window or 24
+        local label = hrs % 24 == 0 and (hrs / 24 == 1 and L.win_24h or string.format(L.win_days, hrs / 24)) or (hrs .. "h")
+        local txt = string.format(L.win_title, label) .. Gray("  ·  " .. string.format(L.win_sessions_n, r.sessions or 0))
+        if (r.unknown or 0) > 60 then txt = txt .. Gray("  ·  " .. string.format(L.d_note_unknown, FormatDuration(r.unknown))) end
+        ui.summary:SetText(txt)
+    else
+        ui.summary:SetText(date("%d/%m %H:%M", r.start) .. Gray(" -> ") .. date("%H:%M", r.stop))
+    end
+
+    -- 1) tempo / mobs / K/D
+    SetTile(1, 1, 3, 0, L.d_time, D(isWin and r.dur or r.dur), C.text, isWin and (L.d_online) or nil, true)
+    SetTile(2, 2, 3, 0, L.d_mobs, Num(r.kills), C.green, string.format(L.d_per_hour, Num(math.floor(r.kills / dur * 3600))), true)
+    local kd = r.deaths > 0 and (r.pvpKills / r.deaths) or r.pvpKills
+    SetTile(3, 3, 3, 0, L.d_kd, string.format("%.2f", kd), C.red, r.pvpKills .. " / " .. r.deaths, true)
+
+    -- 2) EXP (mob x quest)
+    local part = (r.unknown or 0) > 60 and L.d_partial or nil
+    local mobXP, questXP = r.killXP, r.questXP
+    SetTile(4, 1, 3, 58, L.d_xp, Num(r.xp), C.purple,
+        string.format(L.d_per_hour, Num(math.floor(r.xp / dur * 3600))) .. ((r.levels or 0) > 0 and ("  " .. string.format(L.d_levels, r.levels)) or ""), true)
+    SetTile(5, 2, 3, 58, L.d_xp_mob, mobXP and Num(mobXP) or dash, C.green, part or (mobXP and Pct(mobXP, r.xp) or L.d_nodata), true)
+    SetTile(6, 3, 3, 58, L.d_xp_quest, questXP and Num(questXP) or dash, C.gold,
+        part or (r.quests and string.format(L.d_quests_n, r.quests) or L.d_nodata), true)
+
+    -- 3) Ouro: adquirido (virou ouro + itens no vendor) e gasto
+    local g = WD:GoldSummary(r)
+    local gsub
+    if g.legacy then
+        gsub = L.d_gold_legacy
+    else
+        gsub = string.format(L.d_gold_split, GoldFmt(g.coin))
+        if g.bag then gsub = gsub .. string.format(L.d_gold_bag, GoldFmt(g.bag, true)) end
+        if r.goldPartial then gsub = L.d_partial end
+    end
+    SetTile(7, 1, 2, 116, L.d_gold_in, GoldFmt(g.acquired), C.gold, gsub, true)
+    SetTile(8, 2, 2, 116, L.d_gold_out, g.spent and GoldFmt(g.spent) or dash, C.red, nil, true)
+
+    -- 4) Grind x fora do grind
+    local t = r.t
+    local off
+    if t then off = (t.flight or 0) + (t.afk or 0) + (t.craft or 0) + (t.dead or 0) + (t.other or 0) end
+    local classified = t and ((t.grind or 0) + off) or nil
+    SetTile(10, 1, 3, 174, L.d_grind, t and D(t.grind) or dash, C.green, part or (classified and Pct(t.grind, classified) or L.d_nodata), true)
+    SetTile(11, 2, 3, 174, L.d_off, t and D(off) or dash, C.red, part or (classified and Pct(off, classified) or L.d_nodata), true)
+    if isWin then
+        if (r.unknown or 0) > 60 then
+            SetTile(12, 3, 3, 174, L.d_offline, dash, C.dim, L.d_nodata_old, true)
+        else
+            SetTile(12, 3, 3, 174, L.d_offline, D(r.offline), C.dim, Pct(r.offline, r.span), true)
+        end
+    else
+        SetTile(12, 3, 3, 174, L.d_quests, r.quests and Num(r.quests) or dash, C.gold, nil, true)
+    end
+
+    -- 5) Detalhe do tempo fora do grind
+    SetTile(13, 1, 4, 232, L.d_flight, t and D(t.flight) or dash, C.text, nil, true)
+    SetTile(14, 2, 4, 232, L.d_afk, t and D(t.afk) or dash, C.text, nil, true)
+    SetTile(15, 3, 4, 232, L.d_craft, t and D(t.craft) or dash, C.text, nil, true)
+    SetTile(16, 4, 4, 232, L.d_other, t and D((t.other or 0) + (t.dead or 0)) or dash, C.text,
+        (t and (t.dead or 0) > 0) and string.format(L.d_dead_sub, FormatDuration(t.dead)) or nil, true)
 end
 
 local function RenderHist()
@@ -699,6 +806,7 @@ local function RenderHist()
         value = WD:BucketValue(s),
         money = s.money or 0,
         pvpKills = pvp.kills, deaths = pvp.deaths, honor = pvp.honor,
+        onClick = function() state.histView = "current"; ui.scroll:SetVerticalScroll(0); WD:Render() end,
     })
 
     for i = #hist, 1, -1 do
@@ -713,16 +821,36 @@ local function RenderHist()
             value = h.value or 0,
             money = h.money or 0,
             pvpKills = h.pvpKills, deaths = h.deaths, honor = h.honor,
+            onClick = function() state.histView = i; ui.scroll:SetVerticalScroll(0); WD:Render() end,
         })
     end
     return n
 end
 
 local function SetChipVisibility()
-    local inPeriodTab = state.tab == "pve" or state.tab == "pvp" or state.tab == "xp"
+    ui.histChips = ui.histChips or {}
+    local grp = GroupOf(state.tab)
+    local inPeriodTab = state.tab == "pve" or state.tab == "pvp"
+    local rowY = (grp == "pve") and -106 or -76
+    local left = SIDE_W + PAD
+    if ui.periodButtons[1] then ui.periodButtons[1]:ClearAllPoints(); ui.periodButtons[1]:SetPoint("TOPLEFT", frame, "TOPLEFT", left, rowY) end
+    if ui.viewButtons[1] then ui.viewButtons[1]:ClearAllPoints(); ui.viewButtons[1]:SetPoint("TOPLEFT", frame, "TOPLEFT", left, rowY) end
+    ui.sortBtn:ClearAllPoints(); ui.sortBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, rowY)
+    ui.info:ClearAllPoints()
+    ui.info:SetPoint("TOPLEFT", frame, "TOPLEFT", left, (grp == "pve" and state.tab ~= "xp") and -146 or -116)
+    ui.info:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -PAD, PAD + 38)
     for _, b in ipairs(ui.periodButtons) do b:SetShown(inPeriodTab) end
     for _, b in ipairs(ui.viewButtons) do b:SetShown(state.tab == "inv") end
     ui.sortBtn:SetShown(state.tab == "pve" and not state.mob)
+    for _, b in ipairs(ui.subChips) do b:SetShown(grp == "pve"); b:SetActive(b.key == state.tab) end
+    ui.reportChip:SetShown(grp == "pve")
+    for _, b in ipairs(ui.histChips) do
+        b:SetShown(state.tab == "hist")
+        local v = state.histView
+        local on
+        if b.key == "list" then on = (v == nil or v == "current" or type(v) == "number") else on = (v == b.key) end
+        b:SetActive(on)
+    end
 end
 
 function WD:Render()
@@ -730,7 +858,9 @@ function WD:Render()
 
     for _, b in ipairs(ui.periodButtons) do b:SetActive(b.key == state.period) end
     for _, b in ipairs(ui.viewButtons) do b:SetActive(b.key == state.invView) end
-    for key, b in pairs(ui.tabs) do b:SetActive(key == state.tab) end
+    local grp = GroupOf(state.tab)
+    if grp == "pve" then state.lastPve = state.tab end
+    for key, b in pairs(ui.tabs) do b:SetActive(key == grp) end
     for _, t in ipairs(TABS) do
         if t.key == state.tab then ui.title:SetText(L[t.titleK]) end
     end
@@ -747,7 +877,28 @@ function WD:Render()
     local showSlots = false
     contentH = 1
 
-    if state.tab == "pve" then
+    local isPanel = (state.tab == "alerts" or state.tab == "black")
+    ui.foot:SetShown(not isPanel)
+    if ui.cfgHost then ui.cfgHost:SetShown(state.tab == "alerts") end
+    if ui.blackHost then ui.blackHost:SetShown(state.tab == "black") end
+    if state.tab == "alerts" then
+        if not ui.cfgHost and WD.CreateConfigPanel then ui.cfgHost = WD:CreateConfigPanel(frame, SIDE_W + PAD) end
+        ui.scroll:Hide(); ui.back:Hide(); ui.info:Hide()
+        if ui.cfgHost then ui.cfgHost:Show() end
+        local okc, cname, cfile = pcall(UnitClass, "player")
+        local txt = L.cfg_title or ""
+        if okc and cname and cfile then
+            local col = RAID_CLASS_COLORS and RAID_CLASS_COLORS[cfile]
+            local hex = col and string.format("%02x%02x%02x", math.floor(col.r * 255), math.floor(col.g * 255), math.floor(col.b * 255)) or "ffffff"
+            txt = (L.cfg_class or "Class") .. ": |cff" .. hex .. cname .. "|r"
+        end
+        ui.summary:SetText(txt)
+    elseif state.tab == "black" then
+        if not ui.blackHost then ui.blackHost = BuildBlackPanel(frame) end
+        ui.scroll:Hide(); ui.back:Hide(); ui.info:Hide()
+        ui.blackHost:Show()
+        ui.summary:SetText(White(#WD:WatchList("pve")) .. Gray(" PvE  ·  ") .. White(#WD:WatchList("pvp")) .. Gray(" PvP"))
+    elseif state.tab == "pve" then
         ui.info:Hide()
         ui.scroll:Show()
         n = RenderPvE(WD:Aggregate(state.period))
@@ -759,18 +910,33 @@ function WD:Render()
         n = RenderInv()
         showSlots = state.invView == "bag"
     elseif state.tab == "hist" then
-        ui.info:Hide()
-        ui.scroll:Show()
-        ui.back:Hide()
-        n = RenderHist()
-        contentH = math.max(1, n * ROW_H)
+        local v, rec, isWin = state.histView, nil, false
+        if v == "current" then
+            rec = WD:CurrentRecord()
+        elseif type(v) == "number" then
+            rec = WD:HistoryRecord(v)
+        elseif type(v) == "string" and v:sub(1, 1) == "w" then
+            rec = WD:WindowRecord(tonumber(v:sub(2)) or 24); isWin = true
+        end
+        if rec then
+            ui.scroll:Hide()
+            ui.back:Show()
+            ui.info:Show()
+            RenderDetail(rec, isWin)
+        else
+            state.histView = nil
+            ui.info:Hide()
+            ui.scroll:Show()
+            ui.back:Hide()
+            n = RenderHist()
+            contentH = math.max(1, n * ROW_H)
+        end
     else
         ui.scroll:Hide()
         ui.back:Hide()
         ui.info:Show()
         HideInfo()
-        local data = WD:Aggregate(state.period)
-        if state.tab == "pvp" then RenderPvP(data) else RenderXP(data) end
+        if state.tab == "pvp" then RenderPvP(WD:Aggregate(state.period)) else RenderXP(WD:Aggregate("session")) end
     end
 
     if not showSlots then
@@ -988,9 +1154,9 @@ function WD:ColorOneNameplate(unit)
     local np = C_NamePlate.GetNamePlateForUnit(unit)
     local fs = NameplateNameFS(np)
     if not fs or not fs.SetVertexColor then return end
-    local name = WD.Clean(UnitName(unit))
-    if type(name) == "string" and WD:IsWatched(name) then
-        local col = WatchdogDB.watchColor or C.blue
+    local kind = WD:IsUnitWatched(unit)
+    if kind then
+        local col = (kind == "pvp") and (WatchdogDB.watchColorPvp or C.purple) or (WatchdogDB.watchColor or C.blue)
         fs:SetVertexColor(col[1], col[2], col[3])
     end
 end
@@ -1036,9 +1202,9 @@ local function HookNameplateName()
         if not frame or not frame.unit or not frame.name then return end
         local unitTok = WD.Clean(frame.unit)
         if type(unitTok) ~= "string" or not unitTok:find("nameplate", 1, true) then return end
-        local name = WD.Clean(UnitName(unitTok))
-        if type(name) == "string" and WD:IsWatched(name) and frame.name.SetVertexColor then
-            local col = WatchdogDB.watchColor or C.blue
+        local kind = WD:IsUnitWatched(unitTok)
+        if kind and frame.name.SetVertexColor then
+            local col = (kind == "pvp") and (WatchdogDB.watchColorPvp or C.purple) or (WatchdogDB.watchColor or C.blue)
             frame.name:SetVertexColor(col[1], col[2], col[3])
         end
       end)
@@ -1046,135 +1212,163 @@ local function HookNameplateName()
     WD._nameHooked = true
 end
 
-local watchFrame
-local function RebuildWatchRows()
-    local f = watchFrame
-    if not f then return end
-    for _, row in ipairs(f.rows) do row:Hide() end
-    local list = WD:WatchList()
-    f.count:SetText(Gray(string.format(L.watch_count, #list)))
-    local shown = math.min(#list, #f.rows)
-    for i = 1, shown do
-        local row = f.rows[i]
-        row.label:SetText(Hex(C.blue) .. list[i] .. "|r")
-        row.name = list[i]
-        row:Show()
-    end
-    if #list > shown then
-        local row = f.rows[shown]
-        if row then row.label:SetText(Gray(string.format(L.watch_more, #list - shown))) end
-    end
-    if #list == 0 then
-        f.empty:Show()
-    else
-        f.empty:Hide()
-    end
-end
+-- Aba BLACK LIST: duas colunas (PvE / PvP), nomes vistos recentemente e lista.
+local SEEN_ROWS, LIST_ROWS = 4, 8
+function BuildBlackPanel(host)
+    local left = SIDE_W + PAD
+    local p = CreateFrame("Frame", nil, host)
+    p:SetPoint("TOPLEFT", host, "TOPLEFT", left, -76)
+    p:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -PAD, PAD)
+    p:Hide()
 
-function WD:ShowWatchList()
-    if not watchFrame then
-        local f = CreateFrame("Frame", "WatchdogWatchFrame", UIParent, BT)
-        f:SetSize(360, 420)
-        f:SetPoint("CENTER")
-        Flat(f, C.bg, C.border, 0.98)
-        f:SetFrameStrata("DIALOG")
-        f:SetToplevel(true)
-        f:HookScript("OnShow", function(self) self:Raise() end)
-        f:SetMovable(true)
-        f:EnableMouse(true)
-        f:RegisterForDrag("LeftButton")
-        f:SetScript("OnDragStart", f.StartMoving)
-        f:SetScript("OnDragStop", f.StopMovingOrSizing)
-        f:Hide()
-        tinsert(UISpecialFrames, "WatchdogWatchFrame")
-        f.rows = {}
+    local hint = FS(p, 11, C.dim, "LEFT")
+    hint:SetPoint("TOPLEFT", p, "TOPLEFT", 2, 0)
+    hint:SetWidth(CONTENT_W - 4)
+    hint:SetJustifyH("LEFT")
+    hint:SetText(L.black_hint)
 
-        local title = FS(f, 16, C.text, "LEFT")
-        title:SetPoint("TOPLEFT", 18, -16)
-        title:SetText(L.watch_title)
-        local hint = FS(f, 11, C.dim, "LEFT")
-        hint:SetPoint("TOPLEFT", 18, -38)
-        hint:SetWidth(324)
-        hint:SetJustifyH("LEFT")
-        hint:SetText(L.watch_hint)
+    local colW = math.floor((CONTENT_W - 12) / 2)
+    p.cols = {}
+    for i, kind in ipairs({ "pve", "pvp" }) do
+        local accent = kind == "pvp" and C.purple or C.blue
+        local col = CreateFrame("Frame", nil, p, BT)
+        col:SetPoint("TOPLEFT", p, "TOPLEFT", (i - 1) * (colW + 12), -32)
+        col:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", (i - 1) * (colW + 12), 0)
+        col:SetWidth(colW)
+        Flat(col, C.card, C.border, 0.9)
+        col.kind, col.offset, col.pick = kind, 0, nil
 
-        local box = CreateFrame("Frame", nil, f, BT)
-        box:SetPoint("TOPLEFT", 16, -70)
-        box:SetPoint("TOPRIGHT", -108, -70)
-        box:SetHeight(26)
-        Flat(box, C.card, C.border, 1)
+        local bar = col:CreateTexture(nil, "ARTWORK")
+        bar:SetPoint("TOPLEFT", 1, -1); bar:SetPoint("TOPRIGHT", -1, -1); bar:SetHeight(2)
+        bar:SetColorTexture(accent[1], accent[2], accent[3], 1)
+
+        local head = FS(col, 13, C.text, "LEFT")
+        head:SetPoint("TOPLEFT", 10, -10)
+        head:SetText(kind == "pvp" and L.black_pvp or L.black_pve)
+
+        local box = CreateFrame("Frame", nil, col, BT)
+        box:SetPoint("TOPLEFT", 8, -30)
+        box:SetSize(colW - 8 - 8 - 56, 24)
+        Flat(box, C.bg, C.border, 1)
         local eb = CreateFrame("EditBox", nil, box)
         eb:SetAutoFocus(false)
-        eb:SetFont(FONT, 13, "")
+        eb:SetFont(FONT, 12, "")
         eb:SetTextColor(C.text[1], C.text[2], C.text[3])
-        eb:SetPoint("TOPLEFT", 8, -2)
-        eb:SetPoint("BOTTOMRIGHT", -8, 2)
+        eb:SetPoint("TOPLEFT", 6, -2); eb:SetPoint("BOTTOMRIGHT", -6, 2)
         eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+        col.edit = eb
         local function doAdd()
             local n = eb:GetText()
-            if n == "" and UnitExists("target") and not UnitIsPlayer("target") then n = UnitName("target") end
-            if WD:AddWatch(n) then eb:SetText("") end
-            RebuildWatchRows()
+            if WD:AddWatch(n, kind) then eb:SetText(""); eb:ClearFocus() end
+            if WD.RefreshBlack then WD:RefreshBlack() end
         end
         eb:SetScript("OnEnterPressed", doAdd)
-        f.edit = eb
+        local add = MakeChip(col, L.watch_add, 50)
+        add:SetPoint("TOPRIGHT", -8, -30)
+        add:SetScript("OnClick", doAdd)
 
-        local addBtn = MakeChip(f, L.watch_add, 84)
-        addBtn:SetPoint("TOPRIGHT", -16, -70)
-        addBtn:SetScript("OnClick", doAdd)
-
-        local tgtBtn = MakeChip(f, L.watch_add_target, 160)
-        tgtBtn:SetPoint("TOPLEFT", 16, -104)
-        tgtBtn:SetScript("OnClick", function()
-            if UnitExists("target") and not UnitIsPlayer("target") then
-                WD:AddWatch(UnitName("target"))
-                RebuildWatchRows()
-            end
-        end)
-
-        f.count = FS(f, 11, C.dim, "RIGHT")
-        f.count:SetPoint("TOPRIGHT", -16, -112)
-
-        local listbox = CreateFrame("Frame", nil, f, BT)
-        listbox:SetPoint("TOPLEFT", 16, -136)
-        listbox:SetPoint("BOTTOMRIGHT", -16, 52)
-        Flat(listbox, C.card, C.border, 1)
-
-        f.empty = FS(listbox, 12, C.dim, "CENTER")
-        f.empty:SetPoint("CENTER")
-        f.empty:SetText(L.watch_empty)
-
-        local ROWH = 24
-        for i = 1, 11 do
-            local row = CreateFrame("Button", nil, listbox)
-            row:SetHeight(ROWH)
-            row:SetPoint("TOPLEFT", 6, -6 - (i - 1) * ROWH)
-            row:SetPoint("TOPRIGHT", -6, -6 - (i - 1) * ROWH)
-            row.label = FS(row, 13, C.text, "LEFT")
-            row.label:SetPoint("LEFT", 6, 0)
-            local x = FS(row, 14, C.red, "RIGHT")
-            x:SetPoint("RIGHT", -8, 0)
-            x:SetText("X")
-            row.x = x
-            row:SetScript("OnClick", function(self)
-                if self.name then WD:RemoveWatch(self.name); RebuildWatchRows() end
+        local seenLbl = FS(col, 11, C.dim, "LEFT")
+        seenLbl:SetPoint("TOPLEFT", 10, -62)
+        seenLbl:SetText(L.black_seen)
+        col.seenEmpty = FS(col, 11, C.mute, "LEFT")
+        col.seenEmpty:SetPoint("TOPLEFT", 12, -80)
+        col.seenEmpty:SetText(L.black_seen_empty)
+        col.seenRows = {}
+        for r = 1, SEEN_ROWS do
+            local b = CreateFrame("Button", nil, col)
+            b:SetHeight(20)
+            b:SetPoint("TOPLEFT", 8, -78 - (r - 1) * 20)
+            b:SetPoint("TOPRIGHT", -8, -78 - (r - 1) * 20)
+            b.hl = b:CreateTexture(nil, "HIGHLIGHT"); b.hl:SetAllPoints(); b.hl:SetColorTexture(1, 1, 1, 0.06)
+            b.text = FS(b, 12, C.text, "LEFT")
+            b.text:SetPoint("LEFT", 6, 0)
+            b:SetScript("OnClick", function(self)
+                if self.name then eb:SetText(self.name); eb:ClearFocus() end
             end)
-            row:SetScript("OnEnter", function(self) self.label:SetText(self.label:GetText()); GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText(L.watch_remove); GameTooltip:Show() end)
-            row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            row:Hide()
-            f.rows[i] = row
+            b:Hide()
+            col.seenRows[r] = b
         end
 
-        local close = MakeChip(f, L.btn_close, 90)
-        close:SetPoint("BOTTOMRIGHT", -16, 16)
-        close:SetScript("OnClick", function() f:Hide() end)
-
-        watchFrame = f
+        col.listLbl = FS(col, 11, C.dim, "LEFT")
+        col.listLbl:SetPoint("TOPLEFT", 10, -166)
+        col.empty = FS(col, 11, C.mute, "LEFT")
+        col.empty:SetPoint("TOPLEFT", 12, -184)
+        col.empty:SetText(L.black_empty)
+        col.more = FS(col, 10, C.mute, "RIGHT")
+        col.more:SetPoint("TOPRIGHT", -10, -167)
+        col.rows = {}
+        for r = 1, LIST_ROWS do
+            local row = CreateFrame("Frame", nil, col)
+            row:SetHeight(20)
+            row:SetPoint("TOPLEFT", 8, -182 - (r - 1) * 20)
+            row:SetPoint("TOPRIGHT", -8, -182 - (r - 1) * 20)
+            row.label = FS(row, 12, accent, "LEFT")
+            row.label:SetPoint("LEFT", 6, 0)
+            row.label:SetPoint("RIGHT", -24, 0)
+            row.label:SetWordWrap(false)
+            local x = CreateFrame("Button", nil, row)
+            x:SetSize(20, 20)
+            x:SetPoint("RIGHT", 0, 0)
+            x.text = FS(x, 13, C.mute, "CENTER")
+            x.text:SetPoint("CENTER", 0, 1)
+            x.text:SetText("x")
+            x:SetScript("OnEnter", function(self) self.text:SetTextColor(C.red[1], C.red[2], C.red[3]) end)
+            x:SetScript("OnLeave", function(self) self.text:SetTextColor(C.mute[1], C.mute[2], C.mute[3]) end)
+            x:SetScript("OnClick", function()
+                if row.name then WD:RemoveWatch(row.name, kind); if WD.RefreshBlack then WD:RefreshBlack() end end
+            end)
+            row:Hide()
+            col.rows[r] = row
+        end
+        col:EnableMouseWheel(true)
+        col:SetScript("OnMouseWheel", function(self, delta)
+            local n = #WD:WatchList(kind)
+            self.offset = math.max(0, math.min(math.max(0, n - LIST_ROWS), self.offset - delta))
+            if WD.RefreshBlack then WD:RefreshBlack() end
+        end)
+        p.cols[kind] = col
     end
-    HookNameplateName()
-    watchFrame:Show()
-    RebuildWatchRows()
+
+    function WD:RefreshBlack()
+        if not p:IsShown() then return end
+        for kind, col in pairs(p.cols) do
+            local list = WD:WatchList(kind)
+            col.listLbl:SetText(string.format(L.black_list, #list))
+            col.offset = math.max(0, math.min(math.max(0, #list - LIST_ROWS), col.offset))
+            for r = 1, LIST_ROWS do
+                local name = list[col.offset + r]
+                local row = col.rows[r]
+                if name then row.name = name; row.label:SetText(name); row:Show() else row.name = nil; row:Hide() end
+            end
+            col.empty:SetShown(#list == 0)
+            col.more:SetText(#list > LIST_ROWS and L.black_more or "")
+            -- vistos recentemente (sem os que ja estao na lista)
+            local shown = 0
+            for _, name in ipairs(WD:SeenList(kind)) do
+                if shown >= SEEN_ROWS then break end
+                if not WD:IsWatched(name, kind) then
+                    shown = shown + 1
+                    local b = col.seenRows[shown]
+                    b.name = name
+                    b.text:SetText(name)
+                    b:Show()
+                end
+            end
+            for r = shown + 1, SEEN_ROWS do col.seenRows[r].name = nil; col.seenRows[r]:Hide() end
+            col.seenEmpty:SetShown(shown == 0)
+        end
+    end
+    local acc = 0
+    p:SetScript("OnUpdate", function(_, el)
+        acc = acc + el
+        if acc >= 1 then acc = 0; WD:RefreshBlack() end
+    end)
+    p:SetScript("OnShow", function() WD:RefreshBlack() end)
+    return p
 end
+
+-- Compatibilidade: antigo /wd premium abre a aba Black list.
+function WD:ShowWatchList() WD:Toggle("black") end
 
 ---------------------------------------------------------------------------
 -- Janela
@@ -1212,7 +1406,7 @@ local function CreateSidebar(f)
     -- Navegacao
     ui.tabs = {}
     local prev
-    for _, t in ipairs(TABS) do
+    for _, t in ipairs(GROUPS) do
         local key = t.key
         local b = CreateFrame("Button", nil, side)
         b:SetSize(SIDE_W - 20, 32)
@@ -1244,7 +1438,7 @@ local function CreateSidebar(f)
             if on then self.text:SetTextColor(1, 1, 1) else self.text:SetTextColor(C.mute[1], C.mute[2], C.mute[3]) end
         end
         b:SetScript("OnClick", function()
-            state.tab = key
+            state.tab = (key == "pve") and (state.lastPve or "pve") or key
             state.mob = nil
             ui.scroll:SetVerticalScroll(0)
             WD:Render()
@@ -1259,28 +1453,17 @@ local function CreateSidebar(f)
         prev = b
     end
 
-    -- Rodape: relatorio, nova sessao e versao
-    local commands = MakeChip(side, L.chip_commands, SIDE_W - 28)
-    commands:SetPoint("BOTTOM", side, "BOTTOM", 0, 170)
+    -- Rodape: Nova sessao | Comandos (lado a lado)
+    local half = math.floor((SIDE_W - 26) / 2)
+    local newSession = MakeChip(side, L.chip_newsession, half)
+    newSession:SetPoint("BOTTOMLEFT", side, "BOTTOMLEFT", 10, 46)
+    newSession.text:SetFont(FONT, 11, "")
+    newSession:SetScript("OnClick", function() WD:StartNewSession() end)
+
+    local commands = MakeChip(side, L.chip_commands, half)
+    commands:SetPoint("LEFT", newSession, "RIGHT", 6, 0)
+    commands.text:SetFont(FONT, 11, "")
     commands:SetScript("OnClick", function() if WD.ToggleCommands then WD:ToggleCommands() end end)
-
-    local settings = MakeChip(side, L.chip_settings, SIDE_W - 28)
-    settings:SetPoint("BOTTOM", side, "BOTTOM", 0, 140)
-    settings:SetScript("OnClick", function() if WD.ToggleConfig then WD:ToggleConfig() end end)
-
-    local premium = MakeChip(side, L.chip_premium, SIDE_W - 28)
-    premium:SetPoint("BOTTOM", side, "BOTTOM", 0, 110)
-    premium:SetScript("OnClick", function() WD:ShowWatchList() end)
-
-    local report = MakeChip(side, L.chip_report, SIDE_W - 28)
-    report:SetPoint("BOTTOM", side, "BOTTOM", 0, 80)
-    report:SetScript("OnClick", function() WD:ShowReport() end)
-
-    local newSession = MakeChip(side, L.chip_newsession, SIDE_W - 28)
-    newSession:SetPoint("BOTTOM", side, "BOTTOM", 0, 50)
-    newSession:SetScript("OnClick", function()
-        WD:StartNewSession()
-    end)
 
     local dot = side:CreateTexture(nil, "ARTWORK")
     dot:SetSize(7, 7)
@@ -1338,6 +1521,14 @@ local function CreateMainFrame()
     ui.timerLabel:SetText(L.session_active)
     ui.timer = FS(f, 17, C.text, "RIGHT", "")
     ui.timer:SetPoint("TOPRIGHT", f, "TOPRIGHT", -48, -28)
+    -- Botao "Sessao ativa": abre os dados da sessao atual
+    ui.activeChip = MakeChip(f, L.btn_active, 96)
+    ui.activeChip:SetPoint("TOPRIGHT", f, "TOPRIGHT", -140, -14)
+    ui.activeChip:SetScript("OnClick", function()
+        state.tab = "hist"; state.histView = "current"; state.mob = nil
+        ui.scroll:SetVerticalScroll(0)
+        WD:Render()
+    end)
     local acc = 0
     f:SetScript("OnUpdate", function(_, elapsed)
         acc = acc + elapsed
@@ -1358,7 +1549,45 @@ local function CreateMainFrame()
 
     ui.back = MakeChip(f, L.back, 70)
     ui.back:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, -46)
-    ui.back:SetScript("OnClick", function() state.mob = nil; ui.scroll:SetVerticalScroll(0); WD:Render() end)
+    ui.back:SetScript("OnClick", function() state.mob = nil; state.histView = nil; ui.scroll:SetVerticalScroll(0); WD:Render() end)
+
+    -- Sub-menu do grupo PvE (Mobs / EXP / Inventario / Historico) + Relatorio
+    ui.subChips = {}
+    local sprev
+    for _, sdef in ipairs(PVE_SUBS) do
+        local b = MakeChip(f, L[sdef.labelK], 84)
+        b.key = sdef.key
+        if sprev then b:SetPoint("LEFT", sprev, "RIGHT", 6, 0) else b:SetPoint("TOPLEFT", f, "TOPLEFT", left, -76) end
+        b:SetScript("OnClick", function()
+            state.tab = sdef.key
+            state.mob = nil
+            if sdef.key == "hist" then state.histView = nil end
+            ui.scroll:SetVerticalScroll(0)
+            WD:Render()
+        end)
+        ui.subChips[#ui.subChips + 1] = b
+        sprev = b
+    end
+    -- Historico: lista de sessoes ou janela por tempo
+    ui.histChips = {}
+    local hprev
+    for _, hd in ipairs({ { "list", "win_sessions" }, { "w24", "win_24h" }, { "w168", "win_7d" }, { "w720", "win_30d" } }) do
+        local b = MakeChip(f, L[hd[2]], 84)
+        b.key = hd[1]
+        if hprev then b:SetPoint("LEFT", hprev, "RIGHT", 6, 0) else b:SetPoint("TOPLEFT", f, "TOPLEFT", left, -106) end
+        b:SetScript("OnClick", function()
+            state.histView = (hd[1] ~= "list") and hd[1] or nil
+            ui.scroll:SetVerticalScroll(0)
+            WD:Render()
+        end)
+        b:Hide()
+        ui.histChips[#ui.histChips + 1] = b
+        hprev = b
+    end
+
+    ui.reportChip = MakeChip(f, L.chip_report, 96)
+    ui.reportChip:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, -76)
+    ui.reportChip:SetScript("OnClick", function() WD:ShowReport() end)
 
     -- Periodos (PvE / PvP / EXP)
     ui.periodButtons = {}
@@ -1369,7 +1598,7 @@ local function CreateMainFrame()
         if prev then
             b:SetPoint("LEFT", prev, "RIGHT", 6, 0)
         else
-            b:SetPoint("TOPLEFT", f, "TOPLEFT", left, -76)
+            b:SetPoint("TOPLEFT", f, "TOPLEFT", left, -106)
         end
         b:SetScript("OnClick", function()
             state.period = p.key
@@ -1388,7 +1617,7 @@ local function CreateMainFrame()
         if prev then
             b:SetPoint("LEFT", prev, "RIGHT", 6, 0)
         else
-            b:SetPoint("TOPLEFT", f, "TOPLEFT", left, -76)
+            b:SetPoint("TOPLEFT", f, "TOPLEFT", left, -106)
         end
         b:SetScript("OnClick", function()
             state.invView = v.key
@@ -1401,7 +1630,7 @@ local function CreateMainFrame()
 
     -- Ordenacao da lista de mobs (PvE)
     ui.sortBtn = MakeChip(f, L[SORTS[1].labelK], 104)
-    ui.sortBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, -76)
+    ui.sortBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, -106)
     ui.sortBtn:SetScript("OnClick", function()
         for i, s in ipairs(SORTS) do
             if s.key == state.sort then
@@ -1415,7 +1644,7 @@ local function CreateMainFrame()
 
     -- Lista / bolsa com rolagem (sem barra: use a roda do mouse).
     ui.scroll = CreateFrame("ScrollFrame", "WatchdogScroll", f)
-    ui.scroll:SetPoint("TOPLEFT", f, "TOPLEFT", left, -116)
+    ui.scroll:SetPoint("TOPLEFT", f, "TOPLEFT", left, -146)
     ui.scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PAD, PAD + 38)
     ui.content = CreateFrame("Frame", nil, ui.scroll)
     ui.content:SetSize(CONTENT_W, 1)
@@ -1429,17 +1658,17 @@ local function CreateMainFrame()
 
     -- Area dos tiles (PvP / EXP)
     ui.info = CreateFrame("Frame", nil, f)
-    ui.info:SetPoint("TOPLEFT", f, "TOPLEFT", left, -116)
+    ui.info:SetPoint("TOPLEFT", f, "TOPLEFT", left, -146)
     ui.info:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PAD, PAD + 38)
 
     -- Barra de XP
     ui.xpLabel = FS(ui.info, 13, C.dim, "LEFT")
-    ui.xpLabel:SetPoint("TOPLEFT", ui.info, "TOPLEFT", 2, -150)
+    ui.xpLabel:SetPoint("TOPLEFT", ui.info, "TOPLEFT", 2, -82)
     ui.xpPct = FS(ui.info, 11, C.dim, "RIGHT")
-    ui.xpPct:SetPoint("TOPRIGHT", ui.info, "TOPRIGHT", -2, -151)
+    ui.xpPct:SetPoint("TOPRIGHT", ui.info, "TOPRIGHT", -2, -83)
     ui.xpBar = CreateFrame("Frame", nil, ui.info, BT)
     ui.xpBar:SetSize(CONTENT_W, 16)
-    ui.xpBar:SetPoint("TOPLEFT", ui.info, "TOPLEFT", 0, -170)
+    ui.xpBar:SetPoint("TOPLEFT", ui.info, "TOPLEFT", 0, -102)
     Flat(ui.xpBar, C.card, C.border, 1)
     ui.xpFill = ui.xpBar:CreateTexture(nil, "ARTWORK")
     ui.xpFill:SetPoint("TOPLEFT", 1, -1)
@@ -1449,6 +1678,7 @@ local function CreateMainFrame()
 
     -- Rodape: ouro por hora da sessao
     local foot = CreateFrame("Frame", nil, f, BT)
+    ui.foot = foot
     foot:SetHeight(30)
     foot:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", left, PAD)
     foot:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PAD, PAD)
@@ -1468,13 +1698,22 @@ end
 
 function WD:Toggle(tab)
     if not frame then CreateMainFrame() end
+    -- Primeira abertura depois de logar (por /wd ou minimapa) cai na tela de EXP.
+    local db = WatchdogCharDB
+    local first = db and db.openedStamp ~= db.loginStamp
     if tab then
         state.tab = tab
         state.mob = nil
+        if db then db.openedStamp = db.loginStamp end
         frame:Show()
         WD:Render()
         return
     end
+    if not frame:IsShown() and first then
+        state.tab = "xp"
+        state.mob = nil
+    end
+    if not frame:IsShown() and db then db.openedStamp = db.loginStamp end
     frame:SetShown(not frame:IsShown())
 end
 
@@ -1766,26 +2005,36 @@ SlashCmdList.WATCHDOG = function(msg)
         if WD.ToggleCommands then WD:ToggleCommands() end
     elseif cmd == "config" or cmd == "opcoes" or cmd == "opções" or cmd == "menu" or cmd == "assist" then
         if WD.ToggleConfig then WD:ToggleConfig() end
-    elseif cmd == "premium" or cmd == "lista" or cmd == "watchlist" then
-        WD:ShowWatchList()
+    elseif cmd == "premium" or cmd == "lista" or cmd == "watchlist" or cmd == "blacklist" or cmd == "black" then
+        WD:Toggle("black")
     elseif cmd == "nameplates" or cmd == "plaquinhas" or cmd == "alcance" then
         WD:MaxNameplateRange()
         print("|cffffd100Watchdog:|r " .. L.msg_nameplates)
-    elseif cmd == "watch" or cmd == "marcar" then
+    elseif cmd == "watch" or cmd == "marcar" or cmd == "unwatch" or cmd == "desmarcar" then
+        local remove = (cmd == "unwatch" or cmd == "desmarcar")
         local n = strtrim(rest or "")
-        if n == "" and UnitExists("target") and not UnitIsPlayer("target") then n = UnitName("target") end
-        if n ~= "" and WD:AddWatch(n) then
+        local kind
+        local pre = n:match("^[Pp][Vv][Pp]%s+(.+)$")
+        if pre then kind, n = "pvp", pre end
+        if n == "" and UnitExists("target") then
+            n = UnitName("target")
+            kind = UnitIsPlayer("target") and "pvp" or "pve"
+        end
+        if n ~= "" and remove then
+            WD:RemoveWatch(n, kind)
+            print("|cffffd100Watchdog:|r " .. string.format(L.msg_watch_removed, n))
+        elseif n ~= "" and WD:AddWatch(n, kind) then
             print("|cffffd100Watchdog:|r " .. string.format(L.msg_watch_added, n))
         else
             print("|cffffd100Watchdog:|r " .. L.msg_watch_usage)
         end
-    elseif cmd == "unwatch" or cmd == "desmarcar" then
-        local n = strtrim(rest or "")
-        if n == "" and UnitExists("target") and not UnitIsPlayer("target") then n = UnitName("target") end
-        if n ~= "" then
-            WD:RemoveWatch(n)
-            print("|cffffd100Watchdog:|r " .. string.format(L.msg_watch_removed, n))
-        end
+    elseif cmd == "consumiveis" or cmd == "consumíveis" or cmd == "cons" or cmd == "consumables" then
+        if WD.PrintConsumables then WD:PrintConsumables() end
+    elseif cmd == "sessao" or cmd == "sessão" or cmd == "session" then
+        state.histView = "current"
+        WD:Toggle("hist")
+    elseif cmd == "wizard" or cmd == "intro" or cmd == "boasvindas" then
+        if WD.ShowWizard then WD:ShowWizard(true) end
     elseif cmd == "relatorio" or cmd == "relatório" or cmd == "report" then
         WD:ShowReport()
     elseif cmd == "historico" or cmd == "histórico" or cmd == "history" then
@@ -1802,7 +2051,7 @@ SlashCmdList.WATCHDOG = function(msg)
     elseif cmd == "ajuda" or cmd == "help" then
         print("|cffffd100Watchdog|r " .. L.help_header)
         for _, line in ipairs({
-            L.help_open, L.help_new, L.help_report, L.help_hist, L.help_inv,
+            L.help_open, L.help_new, L.help_report, L.help_hist, L.help_cons, L.help_session, L.help_wizard, L.help_inv,
             L.help_alerts, L.help_premium, L.help_watch, L.help_unwatch, L.help_nameplates,
             L.help_minimap, L.help_goldbar, L.help_expbar, L.help_sgoldbar, L.help_igoldbar,
             L.help_config, L.help_lang, L.help_status, L.help_debug,

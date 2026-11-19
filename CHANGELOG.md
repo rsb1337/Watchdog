@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.6.4
+
+### Novo
+- Menu lateral novo: PvE, PvP, Alertas e Black list. A janela ficou mais larga.
+- Black list com colunas PvE/PvP e nomes vistos recentemente.
+- Assistente de primeiro uso (wizard) apos instalar.
+- Historico clicavel: cada sessao abre seus detalhes (tempo, EXP por mob/quest, mobs, K/D no PvP, quests, tempo fora de grind por tipo).
+- Janelas de 24h, 7d e 30d no historico, contando o tempo offline.
+- Botao "Sessao ativa" ao lado do cronometro.
+- Ouro adquirido e ouro gasto (moedas + vendas + valor de vendor da bag/banco, com itens em transito na AH/correio).
+- Primeira abertura apos o login vai direto para a aba EXP; EXP mostra apenas a sessao.
+
+### Correcoes
+- Tempo offline das sessoes passadas agora e contabilizado.
+- Avisos de consumivel nao disparam mais com nomes ainda nao carregados.
+- Botoes da aba Alertas nao saem mais da janela.
+
+
 ## 1.5.0 (Beta)
 
 ### Novo: Assistente

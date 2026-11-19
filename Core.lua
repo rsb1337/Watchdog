@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.5.0"
+WD.version = "1.6.4"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -78,31 +78,59 @@ local function GetMob(bucket, name)
 end
 WD.GetMob = GetMob
 
--- Guarda a sessao que acabou no historico (se teve atividade).
+local T_KEYS = { "grind", "flight", "afk", "craft", "dead", "other" }
+WD.T_KEYS = T_KEYS
+
+local function NewTimes()
+    local t = {}
+    for _, k in ipairs(T_KEYS) do t[k] = 0 end
+    return t
+end
+
+local function BucketKills(s)
+    local kills = 0
+    for _, m in pairs(s.mobs or {}) do kills = kills + (m.kills or 0) end
+    return kills
+end
+
+-- Converte o bucket da sessao num registro (mesmo formato do historico).
+local function EntryFromBucket(s, start, stop)
+    local pvp = s.pvp or {}
+    local t = {}
+    for _, k in ipairs(T_KEYS) do t[k] = math.floor((s.t and s.t[k]) or 0) end
+    return {
+        start = start, stop = stop,
+        kills = BucketKills(s),
+        xp = s.xp or 0,
+        killXP = s.killXP or 0,
+        questXP = s.questXP or 0,
+        quests = s.quests or 0,
+        levels = s.levels or 0,
+        pvpKills = pvp.kills or 0,
+        deaths = pvp.deaths or 0,
+        honor = pvp.honor or 0,
+        money = s.money or 0,
+        income = s.income, spent = s.spent,
+        bagDelta = (s.bagStart and s.bagLast) and (s.bagLast - s.bagStart) or nil,
+        value = WD:BucketValue(s),
+        t = t,
+    }
+end
+
+-- Guarda a sessao que acabou no historico.
 local function ArchiveSession()
     local s = WatchdogCharDB.session
     if not s then return end
     local start = WatchdogCharDB.sessionStart or time()
     local stop = WatchdogCharDB.sessionLast or time()
     local dur = stop - start
-    local kills = 0
-    for _, m in pairs(s.mobs) do kills = kills + (m.kills or 0) end
-    local pvp = s.pvp or {}
-    local active = kills > 0 or (s.xp or 0) > 0 or (pvp.kills or 0) > 0 or (s.money or 0) > 0
-    if not active or dur < 60 then return end
+    local e = EntryFromBucket(s, start, stop)
+    local active = e.kills > 0 or e.xp > 0 or e.pvpKills > 0 or e.money > 0 or e.quests > 0
+    -- Sessoes sem atividade tambem entram se foram longas (contam no tempo online).
+    if not ((active and dur >= 60) or dur >= 120) then return end
 
     local h = WatchdogCharDB.history
-    h[#h + 1] = {
-        start = start, stop = stop,
-        kills = kills,
-        xp = s.xp or 0,
-        levels = s.levels or 0,
-        pvpKills = pvp.kills or 0,
-        deaths = pvp.deaths or 0,
-        honor = pvp.honor or 0,
-        money = s.money or 0,
-        value = WD:BucketValue(s),
-    }
+    h[#h + 1] = e
     while #h > HISTORY_MAX do table.remove(h, 1) end
 end
 
@@ -110,9 +138,92 @@ local function NewSession()
     ArchiveSession()
     local s = NewBucket()
     s.killXP, s.killXPCount, s.levels = 0, 0, 0
+    s.questXP, s.quests = 0, 0
+    s.t = NewTimes()
     WatchdogCharDB.session = s
     WatchdogCharDB.sessionStart = time()
     WatchdogCharDB.sessionLast = time()
+end
+
+-- Registro de uma entrada do historico (campos novos podem faltar em sessoes antigas).
+function WD:RecordOf(e, now)
+    local stop = e.stop or now or e.start
+    local r = {
+        start = e.start, stop = stop, dur = math.max(0, stop - e.start),
+        kills = e.kills or 0, xp = e.xp or 0, killXP = e.killXP, questXP = e.questXP,
+        quests = e.quests, levels = e.levels or 0,
+        pvpKills = e.pvpKills or 0, deaths = e.deaths or 0, honor = e.honor or 0,
+        money = e.money or 0, income = e.income, spent = e.spent, bagDelta = e.bagDelta, value = e.value or 0, t = e.t,
+    }
+    return r
+end
+
+-- Ouro da sessao: adquirido = o que virou ouro (entradas na carteira: loot, vendor, AH, quests...)
+-- + variacao do valor de vendor dos itens (bolsas/banco); gasto = saidas da carteira.
+function WD:GoldSummary(r)
+    if r.income == nil then
+        return { acquired = r.value or 0, legacy = true }
+    end
+    local bag = r.bagDelta
+    return {
+        coin = r.income,
+        bag = bag,
+        acquired = math.max(0, r.income + (bag or 0)),
+        spent = r.spent or 0,
+    }
+end
+
+function WD:CurrentRecord()
+    pcall(WD.UpdateBagValue, WD)
+    local now = time()
+    local e = EntryFromBucket(WatchdogCharDB.session, WatchdogCharDB.sessionStart or now, now)
+    return WD:RecordOf(e, now)
+end
+
+function WD:HistoryRecord(i)
+    local e = WatchdogCharDB.history[i]
+    return e and WD:RecordOf(e) or nil
+end
+
+-- Janela por tempo (ex.: ultimas 24h): soma as sessoes (proporcional ao trecho que cai na
+-- janela) e calcula o tempo offline = janela (desde a 1a sessao registrada) - tempo online.
+local SUM_KEYS = { "kills", "xp", "killXP", "questXP", "quests", "levels", "pvpKills", "deaths", "honor", "money", "income", "spent", "bagDelta", "value" }
+function WD:WindowRecord(hours)
+    pcall(WD.UpdateBagValue, WD)
+    local now = time()
+    local cutoff = now - hours * 3600
+    local list = {}
+    for _, e in ipairs(WatchdogCharDB.history or {}) do list[#list + 1] = e end
+    list[#list + 1] = EntryFromBucket(WatchdogCharDB.session, WatchdogCharDB.sessionStart or now, now)
+
+    local out = { t = NewTimes(), unknown = 0, sessions = 0 }
+    for _, k in ipairs(SUM_KEYS) do out[k] = 0 end
+    local first, online = nil, 0
+    for _, e in ipairs(list) do
+        local st, sp = e.start, e.stop or e.start
+        if not first or st < first then first = st end
+        local a, b = math.max(st, cutoff), math.min(sp, now)
+        if b > a then
+            local dur = math.max(1, sp - st)
+            local f = (b - a) / dur
+            online = online + (b - a)
+            out.sessions = out.sessions + 1
+            for _, k in ipairs(SUM_KEYS) do out[k] = out[k] + (e[k] or 0) * f end
+            if e.income == nil then out.goldPartial = true end
+            if e.t then
+                for _, k in ipairs(T_KEYS) do out.t[k] = out.t[k] + (e.t[k] or 0) * f end
+            else
+                out.unknown = out.unknown + (b - a)
+            end
+        end
+    end
+    for _, k in ipairs(SUM_KEYS) do out[k] = math.floor(out[k] + 0.5) end
+    local span = now - math.max(cutoff, first or now)
+    out.start, out.stop, out.span = math.max(cutoff, first or now), now, span
+    out.dur = online
+    out.offline = math.max(0, span - online)
+    out.window = hours
+    return out
 end
 
 local function TodayKey()
@@ -276,10 +387,9 @@ end
 
 -- Le as bolsas e devolve { slots = {...}, total, used, value }.
 -- Cada slot: { bag, slot, icon?, count?, quality?, link?, itemID?, name?, sell?, value? }
-function WD:ScanBags()
-    local out = { slots = {}, total = 0, used = 0, value = 0 }
-    local maxBag = NUM_BAG_SLOTS or 4
-    for bag = 0, maxBag do
+local function ScanIDs(self, ids)
+    local out = { slots = {}, total = 0, used = 0, value = 0, pending = 0 }
+    for _, bag in ipairs(ids) do
         local n = GetNumSlots and GetNumSlots(bag) or 0
         for slot = 1, n do
             local icon, count, quality, link, itemID = ReadSlot(bag, slot)
@@ -296,6 +406,7 @@ function WD:ScanBags()
                     entry.sell = sell
                     entry.value = (sell or 0) * entry.count
                     out.value = out.value + entry.value
+                    if sell == nil then out.pending = out.pending + 1 end
                 end
                 out.used = out.used + 1
             end
@@ -303,6 +414,82 @@ function WD:ScanBags()
         end
     end
     return out
+end
+
+function WD:ScanBags()
+    local ids = {}
+    for bag = 0, (NUM_BAG_SLOTS or 4) do ids[#ids + 1] = bag end
+    return ScanIDs(self, ids)
+end
+
+-- Banco (so le com o banco aberto).
+function WD:ScanBank()
+    local ids = { -1 }
+    for bag = (NUM_BAG_SLOTS or 4) + 1, (NUM_BAG_SLOTS or 4) + (NUM_BANKBAGSLOTS or 7) do ids[#ids + 1] = bag end
+    return ScanIDs(self, ids)
+end
+
+-- "Em transito": itens que sairam da bag mas ainda sao seus (listados na AH, enviados por correio).
+-- Contam pelo valor de vendor ate o dinheiro chegar pelo correio (ou ate voltarem para a bag).
+local TRANSIT_TTL = 72 * 3600
+local function TransitList()
+    WatchdogCharDB.transit = WatchdogCharDB.transit or {}
+    return WatchdogCharDB.transit
+end
+local function TransitTotal()
+    local now, total, l = time(), 0, TransitList()
+    for i = #l, 1, -1 do
+        if now - l[i].t > TRANSIT_TTL then table.remove(l, i) else total = total + l[i].v end
+    end
+    return total
+end
+local function TransitAdd(v)
+    if v > 0 then local l = TransitList(); l[#l + 1] = { t = time(), v = v } end
+end
+local function TransitTake(v)
+    local l = TransitList()
+    while v > 0 and l[1] do
+        if l[1].v <= v then v = v - l[1].v; table.remove(l, 1)
+        else l[1].v = l[1].v - v; v = 0 end
+    end
+end
+
+local bankOpen, ahOpen, mailOpen = false, false, false
+local lastBags
+-- Valor de vendor de tudo que e seu: bolsas + banco (ultimo visto) + itens em transito.
+function WD:UpdateBagValue()
+    local s = WatchdogCharDB and WatchdogCharDB.session
+    if not s then return end
+    if bankOpen then
+        local bank = self:ScanBank()
+        if bank.pending == 0 and bank.total > 0 then
+            WatchdogCharDB.bankValue = bank.value
+        end
+    end
+    local scan = self:ScanBags()
+    if scan.pending > 0 then return end
+    -- Variacao das bolsas com AH/correio abertos = item em transito (nao e perda).
+    if lastBags then
+        local d = scan.value - lastBags
+        if d < 0 and (ahOpen or mailOpen) then TransitAdd(-d)
+        elseif d > 0 and mailOpen then TransitTake(d) end
+    end
+    lastBags = scan.value
+    local total = scan.value + (WatchdogCharDB.bankValue or 0) + TransitTotal()
+    s.bagLast = total
+    if s.bagStart == nil then s.bagStart = total end
+end
+
+-- Dinheiro que chega pelo correio (venda na AH etc.) quita o valor em transito.
+function WD:OnMailMoney(d)
+    if mailOpen and d > 0 then TransitTake(d) end
+end
+
+local bagTimer
+function WD:QueueBagValue()
+    if bagTimer then return end
+    bagTimer = true
+    C_Timer.After(2, function() bagTimer = nil; pcall(WD.UpdateBagValue, WD) end)
 end
 
 ---------------------------------------------------------------------------
@@ -344,6 +531,63 @@ local function SnapshotXP()
     lastXP, lastMaxXP, lastLevel = UnitXP("player"), UnitXPMax("player"), UnitLevel("player")
 end
 
+local lastQuestTurn, questExact = -100, false
+local function OnQuestTurnedIn(_, xp)
+    local s = WatchdogCharDB.session
+    s.quests = (s.quests or 0) + 1
+    lastQuestTurn = GetTime()
+    if type(xp) == "number" and xp > 0 then
+        s.questXP = (s.questXP or 0) + xp
+        questExact = true
+    else
+        questExact = false
+    end
+    WD:Refresh()
+end
+
+-- Atividade: classifica o tempo (grind / voo / afk / craft / morto / outros).
+local lastActivity, lastTick = -100, nil
+function WD:MarkActive() lastActivity = GetTime() end
+
+local function IsCrafting()
+    local a, b = _G.TradeSkillFrame, _G.CraftFrame
+    return (a and a.IsShown and a:IsShown() == true) or (b and b.IsShown and b:IsShown() == true) or false
+end
+
+local function ActivityTick()
+    local s = WatchdogCharDB and WatchdogCharDB.session
+    if not s then return end
+    s.t = s.t or NewTimes()
+    local now = GetTime()
+    local dt = lastTick and (now - lastTick) or 0
+    lastTick = now
+    if dt <= 0 then return end
+    if dt > 10 then dt = 2 end -- travada/loading: nao conta o buraco
+    local cat
+    if UnitOnTaxi and UnitOnTaxi("player") then cat = "flight"
+    elseif UnitIsAFK and UnitIsAFK("player") then cat = "afk"
+    elseif UnitIsDeadOrGhost and UnitIsDeadOrGhost("player") then cat = "dead"
+    elseif IsCrafting() then cat = "craft"
+    elseif (UnitAffectingCombat and UnitAffectingCombat("player")) or now - lastActivity < 45 then cat = "grind"
+    else cat = "other" end
+    s.t[cat] = (s.t[cat] or 0) + dt
+end
+
+-- Ouro: acompanha a carteira. Tudo que entra (loot, vendor, AH via correio, quest...) soma em
+-- "income"; tudo que sai (reparo, compras, taxas, voo...) soma em "spent".
+local lastMoney
+local function OnPlayerMoney()
+    local now = GetMoney and GetMoney() or nil
+    if not now then return end
+    if lastMoney then
+        local d = now - lastMoney
+        local s = WatchdogCharDB.session
+        if d > 0 then s.income = (s.income or 0) + d; WD:OnMailMoney(d)
+        elseif d < 0 then s.spent = (s.spent or 0) - d end
+    end
+    lastMoney = now
+end
+
 local function OnXPUpdate()
     if not lastXP then SnapshotXP() return end
     local cur, level = UnitXP("player"), UnitLevel("player")
@@ -358,6 +602,11 @@ local function OnXPUpdate()
     end
     if gained > 0 then
         Each(function(b) b.xp = (b.xp or 0) + gained end)
+        -- Sem o valor exato da quest, atribui o ganho logo apos a entrega a ela.
+        if not questExact and GetTime() - lastQuestTurn < 3 then
+            local s = WatchdogCharDB.session
+            s.questXP = (s.questXP or 0) + gained
+        end
     end
     SnapshotXP()
     WD:Refresh()
@@ -418,6 +667,7 @@ local function AddPending(tbl, name)
 end
 
 local function CountMobKill(name)
+    WD:MarkActive()
     Each(function(b)
         local m = GetMob(b, name)
         m.kills = m.kills + 1
@@ -637,6 +887,7 @@ local function MaybeAlertDrop(guid, itemID, qty, quality, link)
 end
 
 local function OnLoot()
+    WD:MarkActive()
     RememberCorpse("target")
     RememberCorpse("mouseover")
 
@@ -704,35 +955,83 @@ end
 ---------------------------------------------------------------------------
 local function TrimName(s) return (s or ""):match("^%s*(.-)%s*$") end
 
-function WD:IsWatched(name)
-    name = Clean(name)
-    if type(name) ~= "string" or not WatchdogDB.watch then return false end
-    return WatchdogDB.watch[name:lower()] ~= nil
+local function WatchTable(kind, create)
+    local key = (kind == "pvp") and "watchPvp" or "watch"
+    if create then WatchdogDB[key] = WatchdogDB[key] or {} end
+    return WatchdogDB[key]
 end
 
-function WD:AddWatch(name)
+-- kind: "pve" (mobs, padrao) ou "pvp" (jogadores)
+function WD:IsWatched(name, kind)
+    name = Clean(name)
+    if type(name) ~= "string" then return false end
+    local t = WatchTable(kind)
+    return t ~= nil and t[name:lower()] ~= nil
+end
+
+-- Retorna "pve"/"pvp" se a unidade esta em alguma lista (jogador -> lista PvP; resto -> lista PvE).
+function WD:IsUnitWatched(unit)
+    local ok, res = pcall(function()
+        local name = Clean(UnitName(unit))
+        if type(name) ~= "string" then return nil end
+        local kind = UnitIsPlayer(unit) and "pvp" or "pve"
+        if WD:IsWatched(name, kind) then return kind end
+        return nil
+    end)
+    return ok and res or nil
+end
+
+function WD:AddWatch(name, kind)
     name = TrimName(name)
     if name == "" then return false end
-    WatchdogDB.watch = WatchdogDB.watch or {}
-    WatchdogDB.watch[name:lower()] = name
+    WatchTable(kind, true)[name:lower()] = name
     if WD.RefreshNameplates then WD:RefreshNameplates() end
     return true
 end
 
-function WD:RemoveWatch(name)
+function WD:RemoveWatch(name, kind)
     name = TrimName(name)
-    if name == "" or not WatchdogDB.watch then return end
-    WatchdogDB.watch[name:lower()] = nil
+    local t = WatchTable(kind)
+    if name == "" or not t then return end
+    t[name:lower()] = nil
     if WD.RefreshNameplates then WD:RefreshNameplates() end
 end
 
-function WD:WatchList()
+function WD:WatchList(kind)
     local t = {}
-    if WatchdogDB.watch then
-        for _, disp in pairs(WatchdogDB.watch) do t[#t + 1] = disp end
+    local src = WatchTable(kind)
+    if src then
+        for _, disp in pairs(src) do t[#t + 1] = disp end
     end
     table.sort(t, function(a, b) return a:lower() < b:lower() end)
     return t
+end
+
+-- Nomes vistos por ultimo (inimigos mirados / sob o mouse / em plaquinhas) para escolher na Black list.
+local SEEN_MAX = 15
+function WD:RememberSeen(unit)
+    pcall(function()
+        if not unit or not UnitExists(unit) or UnitIsUnit(unit, "player") then return end
+        if not UnitCanAttack("player", unit) then return end
+        local name = Clean(UnitName(unit))
+        if type(name) ~= "string" or name == "" then return end
+        local kind = UnitIsPlayer(unit) and "pvp" or "pve"
+        if kind == "pve" and UnitPlayerControlled and UnitPlayerControlled(unit) then return end
+        WatchdogDB.seen = WatchdogDB.seen or {}
+        local l = WatchdogDB.seen[kind]
+        if not l then l = {}; WatchdogDB.seen[kind] = l end
+        if l[1] and l[1]:lower() == name:lower() then return end
+        for i = #l, 1, -1 do
+            if l[i]:lower() == name:lower() then table.remove(l, i) end
+        end
+        table.insert(l, 1, name)
+        while #l > SEEN_MAX do table.remove(l) end
+    end)
+end
+
+function WD:SeenList(kind)
+    local l = WatchdogDB.seen and WatchdogDB.seen[kind == "pvp" and "pvp" or "pve"]
+    return l or {}
 end
 
 ---------------------------------------------------------------------------
@@ -773,6 +1072,7 @@ local function Prune()
     for _ in pairs(guidMob) do n = n + 1 end
     if n > 400 then guidMob = {}; guidHit = {} end
     if WatchdogCharDB then WatchdogCharDB.sessionLast = time() end
+    pcall(WD.UpdateBagValue, WD)
 end
 
 ---------------------------------------------------------------------------
@@ -804,6 +1104,15 @@ local OPTIONAL_EVENTS = {
     "PLAYER_REGEN_ENABLED",
     "BAG_UPDATE_DELAYED",
     "BAG_UPDATE",
+    "QUEST_TURNED_IN",
+    "PLAYER_REGEN_DISABLED",
+    "PLAYER_MONEY",
+    "BANKFRAME_OPENED",
+    "BANKFRAME_CLOSED",
+    "AUCTION_HOUSE_SHOW",
+    "AUCTION_HOUSE_CLOSED",
+    "MAIL_SHOW",
+    "MAIL_CLOSED",
 }
 
 local function Register(event)
@@ -845,10 +1154,14 @@ local function Init()
     if WD.ResolveLocale then WD:ResolveLocale() end
 
     WatchdogCharDB = WatchdogCharDB or {}
+    -- Instalacao nova (sem nenhum dado antigo) -> mostra o wizard de boas-vindas.
+    WD.freshInstall = (WatchdogDB.wizardDone == nil) and next(WatchdogCharDB) == nil and next(WatchdogDB.items) == nil
+    if WatchdogDB.wizardDone == nil and not WD.freshInstall then WatchdogDB.wizardDone = true end
     WatchdogCharDB.days = WatchdogCharDB.days or {}
     WatchdogCharDB.history = WatchdogCharDB.history or {}
     if not WatchdogCharDB.session then NewSession() end
-    WatchdogCharDB.sessionLast = time()
+    -- (nao mexe em sessionLast aqui: no login ele guarda o instante do ultimo logout/gravacao,
+    --  que e quando a sessao anterior realmente terminou.)
 
     BuildPatterns()
     for _, e in ipairs(EVENTS) do Register(e) end
@@ -856,8 +1169,13 @@ local function Init()
 
     C_Timer.NewTicker(0.5, function() pcall(ScanPvPThreat) end)
     C_Timer.NewTicker(60, Prune)
+    C_Timer.NewTicker(2, function() pcall(ActivityTick) end)
     -- Atualiza XP/hora, ouro/hora e tempo de sessao com a janela aberta.
-    C_Timer.NewTicker(5, function() WD:Refresh() end)
+    C_Timer.NewTicker(5, function()
+        local s = WatchdogCharDB and WatchdogCharDB.session
+        if s and s.bagStart == nil then pcall(WD.UpdateBagValue, WD) end
+        WD:Refresh()
+    end)
     -- Repinta nameplates da lista premium (rede de seguranca).
     C_Timer.NewTicker(0.5, function() if WD.RefreshNameplates then WD:RefreshNameplates() end end)
 end
@@ -882,20 +1200,51 @@ ev:SetScript("OnEvent", function(_, event, ...)
     elseif event == "PLAYER_DEAD" then
         OnPlayerDead()
     elseif event == "PLAYER_TARGET_CHANGED" then
+        WD:RememberSeen("target")
         pcall(RememberCorpse, "target")
         pcall(CheckRare, "target")
     elseif event == "UPDATE_MOUSEOVER_UNIT" then
+        WD:RememberSeen("mouseover")
         pcall(RememberCorpse, "mouseover")
         pcall(CheckRare, "mouseover")
+    elseif event == "PLAYER_MONEY" then
+        pcall(OnPlayerMoney)
+    elseif event == "BANKFRAME_OPENED" then
+        bankOpen = true
+        pcall(WD.UpdateBagValue, WD)   -- leitura na hora, antes de voce mexer nos itens
+    elseif event == "BANKFRAME_CLOSED" then
+        pcall(WD.UpdateBagValue, WD)
+        bankOpen = false
+    elseif event == "AUCTION_HOUSE_SHOW" then
+        pcall(WD.UpdateBagValue, WD)
+        ahOpen = true
+    elseif event == "AUCTION_HOUSE_CLOSED" then
+        pcall(WD.UpdateBagValue, WD)
+        ahOpen = false
+    elseif event == "MAIL_SHOW" then
+        pcall(WD.UpdateBagValue, WD)
+        mailOpen = true
+    elseif event == "MAIL_CLOSED" then
+        pcall(WD.UpdateBagValue, WD)
+        mailOpen = false
+    elseif event == "QUEST_TURNED_IN" then
+        pcall(OnQuestTurnedIn, ...)
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        WD:MarkActive()
     elseif event == "PLAYER_REGEN_ENABLED" then
         if WD._cvarPending and WD.MaxNameplateRange then WD:MaxNameplateRange() end
     elseif event == "NAME_PLATE_UNIT_ADDED" then
+        WD:RememberSeen(arg1)
         pcall(CheckRare, arg1)
         if WD.OnNameplateAdded then WD:OnNameplateAdded(arg1) end
     elseif event == "BAG_UPDATE_DELAYED" or event == "BAG_UPDATE" then
+        if event == "BAG_UPDATE_DELAYED" then WD:QueueBagValue() end
         WD:Refresh()
     elseif event == "PLAYER_LOGOUT" then
-        if WatchdogCharDB then WatchdogCharDB.sessionLast = time() end
+        if WatchdogCharDB then
+            pcall(WD.UpdateBagValue, WD)
+            WatchdogCharDB.sessionLast = time()
+        end
     elseif event == "UNIT_PET" then
         if arg1 == "player" then petGUID = UnitGUID("pet") end
     elseif event == "PLAYER_ENTERING_WORLD" then
@@ -904,8 +1253,13 @@ ev:SetScript("OnEvent", function(_, event, ...)
         if arg1 then
             -- Nova sessao a cada login (um /reload mantem a sessao).
             NewSession()
+            WatchdogCharDB.loginStamp = time()
+        else
+            WatchdogCharDB.sessionLast = time()   -- /reload: a sessao continua
         end
+        C_Timer.After(5, function() pcall(WD.UpdateBagValue, WD) end)
         SnapshotXP()
+        lastMoney = GetMoney and GetMoney() or nil
         WD:Refresh()
     elseif event == "ADDON_LOADED" and arg1 == ADDON then
         ev:UnregisterEvent("ADDON_LOADED")
