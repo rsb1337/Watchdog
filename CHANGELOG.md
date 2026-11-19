@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.5
+
+### Correcoes
+- Alertas: as listas de buffs e de consumiveis ganharam "... e mais N (clique para ver todos)", que abre uma janela com a lista completa, rolagem e botao de remover. Nada fica oculto.
+
 ## 1.6.4
 
 ### Novo

@@ -1606,10 +1606,130 @@ local function BuildConfig(host, left)
     end
 
     -- lista com X vermelho; hasQty => campo ( N ) editavel
+    -- Janelinha com a lista COMPLETA (abre ao clicar em "... e mais N")
+    local popup
+    local function ListPopup()
+        if popup then return popup end
+        local p = CreateFrame("Frame", "WatchdogListPopup", UIParent, BT2)
+        p:SetSize(380, 330)
+        p:SetPoint("CENTER", 0, 20)
+        Flat(p, C.bg, C.border, 0.98)
+        p:SetFrameStrata("FULLSCREEN_DIALOG")
+        p:SetToplevel(true)
+        p:SetClampedToScreen(true)
+        p:SetMovable(true)
+        p:EnableMouse(true)
+        p:RegisterForDrag("LeftButton")
+        p:SetScript("OnDragStart", p.StartMoving)
+        p:SetScript("OnDragStop", p.StopMovingOrSizing)
+        if UISpecialFrames then table.insert(UISpecialFrames, "WatchdogListPopup") end
+        p:Hide()
+
+        local title = FS(p, 14, C.text, "LEFT")
+        title:SetPoint("TOPLEFT", 14, -14)
+        title:SetText(L.cfg_list_all)
+        local close = CreateFrame("Button", nil, p)
+        close:SetSize(24, 24)
+        close:SetPoint("TOPRIGHT", -8, -8)
+        close.text = FS(close, 14, C.dim, "CENTER")
+        close.text:SetPoint("CENTER")
+        close.text:SetText("x")
+        close:SetScript("OnClick", function() p:Hide() end)
+
+        local scroll = CreateFrame("ScrollFrame", nil, p)
+        scroll:SetPoint("TOPLEFT", 12, -44)
+        scroll:SetPoint("BOTTOMRIGHT", -12, 12)
+        local content = CreateFrame("Frame", nil, scroll)
+        content:SetSize(354, 1)
+        scroll:SetScrollChild(content)
+        scroll:EnableMouseWheel(true)
+        scroll:SetScript("OnMouseWheel", function(self, delta)
+            local max = math.max(0, content:GetHeight() - self:GetHeight())
+            self:SetVerticalScroll(math.max(0, math.min(max, self:GetVerticalScroll() - delta * 56)))
+        end)
+        p.rows = {}
+
+        function p:Fill(getList, hasQty)
+            self.getList, self.hasQty = getList, hasQty
+            local list = getList()
+            for i = 1, math.max(#list, #self.rows) do
+                local r = self.rows[i]
+                if not r then
+                    r = CreateFrame("Frame", nil, content)
+                    r:SetSize(354, 28)
+                    r:SetPoint("TOPLEFT", 0, -(i - 1) * 28)
+                    r.label = FS(r, 13, C.blue, "LEFT")
+                    r.label:SetPoint("LEFT", 8, 0)
+                    r.label:SetWordWrap(false)
+                    r.x = CreateFrame("Button", nil, r)
+                    r.x:SetSize(26, 24)
+                    r.x:SetPoint("RIGHT", -4, 0)
+                    r.x.text = FS(r.x, 14, C.red, "CENTER")
+                    r.x.text:SetPoint("CENTER")
+                    r.x.text:SetText("X")
+                    r.x:SetScript("OnClick", function()
+                        table.remove(p.getList(), i)
+                        p:Fill(p.getList, p.hasQty)
+                        WD:RefreshConfig()
+                    end)
+                    r.box = CreateFrame("Frame", nil, r, BT2)
+                    r.box:SetSize(56, 22)
+                    r.box:SetPoint("RIGHT", r.x, "LEFT", -8, 0)
+                    Flat(r.box, C.card, C.border, 1)
+                    r.eb = CreateFrame("EditBox", nil, r.box)
+                    r.eb:SetAutoFocus(false)
+                    r.eb:SetNumeric(true)
+                    r.eb:SetMaxLetters(4)
+                    r.eb:SetFont(K.FONT, 13, "")
+                    r.eb:SetJustifyH("CENTER")
+                    r.eb:SetTextColor(C.gold[1], C.gold[2], C.gold[3])
+                    r.eb:SetPoint("TOPLEFT", 4, -2)
+                    r.eb:SetPoint("BOTTOMRIGHT", -4, 2)
+                    local function save(self2)
+                        local it = p.getList()[i]
+                        if it and type(it) == "table" then it.min = math.max(0, math.min(9999, tonumber(self2:GetText()) or 0)) end
+                    end
+                    r.eb:SetScript("OnEnterPressed", function(self2) save(self2); self2:ClearFocus() end)
+                    r.eb:SetScript("OnEditFocusLost", save)
+                    self.rows[i] = r
+                end
+                local it = list[i]
+                if it then
+                    local nm = type(it) == "table" and it.name or it
+                    if nm == "@ammo" then nm = L.cfg_ammo end
+                    if type(it) == "table" and it.minLevel then nm = nm .. " |cff9ca3af(lvl " .. it.minLevel .. "+)|r" end
+                    r.label:SetText(nm)
+                    r.label:SetWidth(hasQty and 220 or 280)
+                    r.box:SetShown(hasQty and true or false)
+                    if hasQty then r.eb:SetText(tostring(type(it) == "table" and it.min or 0)) end
+                    r:Show()
+                else
+                    r:Hide()
+                end
+            end
+            content:SetHeight(math.max(1, #list * 28))
+            if #list == 0 then self:Hide() end
+        end
+        popup = p
+        return p
+    end
+    f:HookScript("OnHide", function() if popup then popup:Hide() end end)
+
     local function ListRows(page, n, getList, hasQty)
         local rows = {}
         local first = page.y
-        local more = FS(page, 11, C.dim, "LEFT")
+        local more = CreateFrame("Button", nil, page)
+        more:SetSize(360, 20)
+        more.text = FS(more, 11, C.blue, "LEFT")
+        more.text:SetPoint("LEFT", 0, 0)
+        more:SetScript("OnEnter", function() more.text:SetTextColor(C.gold[1], C.gold[2], C.gold[3]) end)
+        more:SetScript("OnLeave", function() more.text:SetTextColor(C.blue[1], C.blue[2], C.blue[3]) end)
+        more:SetScript("OnClick", function()
+            local p = ListPopup()
+            p:Fill(getList, hasQty)
+            p:Show()
+        end)
+        more:Hide()
         for i = 1, n do
             local r = Row(page, 28)
             local label = FS(r, 13, C.blue, "LEFT")
@@ -1678,7 +1798,13 @@ local function BuildConfig(host, left)
                 rows[1].x:Show()
                 if rows[1].edit then rows[1].edit:GetParent():Show(); rows[1].lp:Show(); rows[1].rp:Show() end
             end
-            more:SetText(#list > n and string.format(L.cfg_more, #list - n) or "")
+            if #list > n then
+                more.text:SetText(string.format(L.cfg_more, #list - n))
+                more:Show()
+            else
+                more:Hide()
+            end
+            if popup and popup:IsShown() then popup:Fill(getList, hasQty) end
         end
     end
 
