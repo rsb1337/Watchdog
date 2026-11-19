@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.12
+
+### Mudancas
+- Botoes de selecao (abas do PvE, periodos, abas de Alertas): so o selecionado fica com borda; os outros ficam sem borda.
+- Cores dos detalhes da sessao: tempo e mobs em branco; K/D do PvP vermelho abaixo de 1 e verde a partir de 1; tudo de EXP e quests em roxo; tudo de ouro em amarelo; grind verde e fora do grind vermelho.
+- O ouro da sessao (rodape "Session", barra /wd sgoldbar, ouro por hora e lista do historico) agora usa o mesmo valor do Gold provavel: puro + inventario + AH.
+
 ## 1.6.11
 
 ### Mudancas

@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.6.11"
+WD.version = "1.6.12"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -142,6 +142,7 @@ local function NewSession()
     s.killXP, s.killXPCount, s.levels = 0, 0, 0
     s.questXP, s.quests = 0, 0
     s.t = NewTimes()
+    s.income, s.spent = 0, 0
     WatchdogCharDB.session = s
     WatchdogCharDB.sessionStart = time()
     WatchdogCharDB.sessionLast = time()
@@ -178,6 +179,19 @@ function WD:GoldSummary(r)
         ah = ah,
         probable = math.max(0, r.income + inv + ah),
     }
+end
+
+-- Gold provavel da sessao atual (puro + inventario + AH): e o numero "da sessao" em toda a interface.
+function WD:SessionProbable()
+    local s = WatchdogCharDB.session
+    if not s then return 0 end
+    local ahP, ahV = WD:AHTotals(WatchdogCharDB.sessionStart)
+    local r = {
+        income = s.income or 0,
+        bagDelta = (s.bagStart and s.bagLast) and (s.bagLast - s.bagStart) or nil,
+        ahPrice = ahP, ahVendor = ahV,
+    }
+    return WD:GoldSummary(r).probable
 end
 
 function WD:CurrentRecord()

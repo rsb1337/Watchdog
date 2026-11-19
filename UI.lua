@@ -147,7 +147,7 @@ end
 
 -- Ouro por hora da sessao atual (itens + dinheiro / tempo de sessao).
 local function SessionGoldPerHour()
-    local total = WD:BucketValue(WatchdogCharDB.session)
+    local total = WD:SessionProbable()
     local elapsed = math.max(60, time() - (WatchdogCharDB.sessionStart or time()))
     return total / elapsed * 3600, total
 end
@@ -202,7 +202,7 @@ local function MakeChip(parent, text, width)
             Flat(self, C.tile, C.red, 1)
             self.text:SetTextColor(1, 1, 1)
         else
-            Flat(self, C.card, C.border, 0.9)
+            Flat(self, C.card, C.card, 0.9)   -- sem borda: so o selecionado "acende"
             self.text:SetTextColor(C.dim[1], C.dim[2], C.dim[3])
         end
     end
@@ -737,31 +737,32 @@ RenderDetail = function(r, isWin)
 
     -- 1) tempo / mobs / K/D
     SetTile(1, 1, 3, 0, L.d_time, D(isWin and r.dur or r.dur), C.text, isWin and (L.d_online) or nil, true)
-    SetTile(2, 2, 3, 0, L.d_mobs, Num(r.kills), C.green, string.format(L.d_per_hour, Num(math.floor(r.kills / dur * 3600))), true)
+    SetTile(2, 2, 3, 0, L.d_mobs, Num(r.kills), C.text, string.format(L.d_per_hour, Num(math.floor(r.kills / dur * 3600))), true)
     local kd = r.deaths > 0 and (r.pvpKills / r.deaths) or r.pvpKills
-    SetTile(3, 3, 3, 0, L.d_kd, string.format("%.2f", kd), C.red, r.pvpKills .. " / " .. r.deaths, true)
+    SetTile(3, 3, 3, 0, L.d_kd, string.format("%.2f", kd),
+        (r.pvpKills == 0 and r.deaths == 0) and C.text or (kd < 1 and C.red or C.green), r.pvpKills .. " / " .. r.deaths, true)
 
     -- 2) EXP (mob x quest)
     local part = (r.unknown or 0) > 60 and L.d_partial or nil
     local mobXP, questXP = r.killXP, r.questXP
     SetTile(4, 1, 3, 58, L.d_xp, Num(r.xp), C.purple,
         string.format(L.d_per_hour, Num(math.floor(r.xp / dur * 3600))) .. ((r.levels or 0) > 0 and ("  " .. string.format(L.d_levels, r.levels)) or ""), true)
-    SetTile(5, 2, 3, 58, L.d_xp_mob, mobXP and Num(mobXP) or dash, C.green, part or (mobXP and Pct(mobXP, r.xp) or L.d_nodata), true)
-    SetTile(6, 3, 3, 58, L.d_xp_quest, questXP and Num(questXP) or dash, C.gold,
+    SetTile(5, 2, 3, 58, L.d_xp_mob, mobXP and Num(mobXP) or dash, C.purple, part or (mobXP and Pct(mobXP, r.xp) or L.d_nodata), true)
+    SetTile(6, 3, 3, 58, L.d_xp_quest, questXP and Num(questXP) or dash, C.purple,
         part or (r.quests and string.format(L.d_quests_n, r.quests) or L.d_nodata), true)
 
     -- 3) Ouro: puro / inventario (vendor) / na AH / provavel
     local g = WD:GoldSummary(r)
     if g.legacy then
         SetTile(7, 1, 4, 116, L.d_gold_pure, dash, C.gold, nil, true)
-        SetTile(8, 2, 4, 116, L.d_gold_inv, dash, C.text, nil, true)
-        SetTile(9, 3, 4, 116, L.d_gold_ah, dash, C.blue, nil, true)
-        SetTile(17, 4, 4, 116, L.d_gold_prob, GoldFmt(g.probable), C.green, L.d_gold_legacy, true)
+        SetTile(8, 2, 4, 116, L.d_gold_inv, dash, C.gold, nil, true)
+        SetTile(9, 3, 4, 116, L.d_gold_ah, dash, C.gold, nil, true)
+        SetTile(17, 4, 4, 116, L.d_gold_prob, GoldFmt(g.probable), C.gold, L.d_gold_legacy, true)
     else
         SetTile(7, 1, 4, 116, L.d_gold_pure, GoldFmt(g.coin), C.gold, nil, true)
-        SetTile(8, 2, 4, 116, L.d_gold_inv, GoldFmt(g.inv), C.text, nil, true)
-        SetTile(9, 3, 4, 116, L.d_gold_ah, GoldFmt(g.ah), C.blue, nil, true)
-        SetTile(17, 4, 4, 116, L.d_gold_prob, GoldFmt(g.probable), C.green, r.goldPartial and L.d_partial or nil, true)
+        SetTile(8, 2, 4, 116, L.d_gold_inv, GoldFmt(g.inv), C.gold, nil, true)
+        SetTile(9, 3, 4, 116, L.d_gold_ah, GoldFmt(g.ah), C.gold, nil, true)
+        SetTile(17, 4, 4, 116, L.d_gold_prob, GoldFmt(g.probable), C.gold, r.goldPartial and L.d_partial or nil, true)
     end
 
     -- 4) Grind x fora do grind
@@ -778,7 +779,7 @@ RenderDetail = function(r, isWin)
             SetTile(12, 3, 3, 174, L.d_offline, D(r.offline), C.dim, Pct(r.offline, r.span), true)
         end
     else
-        SetTile(12, 3, 3, 174, L.d_quests, r.quests and Num(r.quests) or dash, C.gold, nil, true)
+        SetTile(12, 3, 3, 174, L.d_quests, r.quests and Num(r.quests) or dash, C.purple, nil, true)
     end
 
     -- 5) Detalhe do tempo fora do grind
@@ -804,7 +805,7 @@ local function RenderHist()
         kills = SessionKills(s),
         xp = s.xp or 0,
         levels = s.levels or 0,
-        value = WD:BucketValue(s),
+        value = WD:SessionProbable(),
         money = s.money or 0,
         pvpKills = pvp.kills, deaths = pvp.deaths, honor = pvp.honor,
         onClick = function() state.histView = "current"; ui.scroll:SetVerticalScroll(0); WD:Render() end,
@@ -819,7 +820,7 @@ local function RenderHist()
             kills = h.kills or 0,
             xp = h.xp or 0,
             levels = h.levels or 0,
-            value = h.value or 0,
+            value = (h.income ~= nil) and WD:GoldSummary(WD:RecordOf(h)).probable or (h.value or 0),
             money = h.money or 0,
             pvpKills = h.pvpKills, deaths = h.deaths, honor = h.honor,
             onClick = function() state.histView = i; ui.scroll:SetVerticalScroll(0); WD:Render() end,
