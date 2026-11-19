@@ -130,12 +130,13 @@ end
 ---------------------------------------------------------------------------
 -- Aviso grande (estilo aviso de boss)
 ---------------------------------------------------------------------------
-local big, bigQueue, bigIcon = nil, {}, nil
+local bigs, bigQueue = {}, {}
 
-local function CreateBig()
+local function CreateBig(slot)
     local K = WD.UIKit
     local C, Flat, FS = K.C, K.Flat, K.FS
-    local f = CreateFrame("Frame", "WatchdogBigWarning", UIParent, K.BT)
+    local f = CreateFrame("Frame", "WatchdogBigWarning" .. (slot > 1 and slot or ""), UIParent, K.BT)
+    f.slot = slot
     f:SetSize(480, 78)
     f:SetPoint("TOP", UIParent, "TOP", 0, -170)
     f:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -186,8 +187,10 @@ local function CreateBig()
             self:SetAlpha((dur - self.t) / 0.6)
         else
             self:Hide()
-            local nxt = table.remove(bigQueue, 1)
-            if nxt then WD:BigWarning(nxt.title, nxt.sub, nxt.icon, nxt.color) end
+            if self.slot == 1 then
+                local nxt = table.remove(bigQueue, 1)
+                if nxt then WD:BigWarning(nxt.title, nxt.sub, nxt.icon, nxt.color, nil, nxt.rest) end
+            end
             return
         end
         self.bar:SetWidth(math.max(1, (self.barMax or 100) * (1 - self.t / dur)))
@@ -196,11 +199,15 @@ local function CreateBig()
 end
 
 -- title grande, sub opcional, icon (textura), color {r,g,b}
-function WD:BigWarning(title, sub, icon, color)
-    if not big then big = CreateBig() end
+-- slot: posicao na pilha (1 = principal; 2, 3... ficam embaixo). rest: lista de avisos extras
+-- ({title, sub, icon, color}) mostrados empilhados abaixo do principal ao mesmo tempo.
+function WD:BigWarning(title, sub, icon, color, slot, rest)
+    slot = slot or 1
+    local big = bigs[slot]
+    if not big then big = CreateBig(slot); bigs[slot] = big end
     -- aviso anterior ainda na tela? (se travou, ex: interface oculta com Alt+Z, libera depois de 7s)
-    if big:IsShown() and big.startedAt and (GetTime() - big.startedAt) < 7 then
-        if #bigQueue < 4 then bigQueue[#bigQueue + 1] = { title = title, sub = sub, icon = icon, color = color } end
+    if slot == 1 and big:IsShown() and big.startedAt and (GetTime() - big.startedAt) < 7 then
+        if #bigQueue < 4 then bigQueue[#bigQueue + 1] = { title = title, sub = sub, icon = icon, color = color, rest = rest } end
         return
     end
     if big:IsShown() then big:Hide() end
@@ -222,7 +229,7 @@ function WD:BigWarning(title, sub, icon, color)
     local TB = math.max(2, S(2))       -- borda do icone (mais grossa)
     big:SetSize(W, H)
     big:ClearAllPoints()
-    big:SetPoint("TOPLEFT", UIParent, "TOPLEFT", math.floor((physW - W) / 2), -S(170))
+    big:SetPoint("TOPLEFT", UIParent, "TOPLEFT", math.floor((physW - W) / 2), -S(170) - (slot - 1) * (H + S(8)))
     big:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = B })
     big:SetBackdropColor(K.C.bg[1], K.C.bg[2], K.C.bg[3], 0.94)
     big:SetBackdropBorderColor(K.C.border[1], K.C.border[2], K.C.border[3], 1)
@@ -263,7 +270,12 @@ function WD:BigWarning(title, sub, icon, color)
     big:SetAlpha(0)
     big:Show()
     print("|cffffd100Watchdog:|r " .. (title or "") .. (sub and (" - " .. sub) or ""))
-    if c.sound then PlaySoundSafe(8959) end
+    if c.sound and slot == 1 then PlaySoundSafe(8959) end
+    if rest then
+        for i, w in ipairs(rest) do
+            if i < 4 then WD:BigWarning(w.title, w.sub, w.icon, w.color, i + 1) end
+        end
+    end
 end
 
 ---------------------------------------------------------------------------
@@ -1187,21 +1199,27 @@ local function CheckSpot(tries)
             if tries < 4 then C_Timer.After(2.5, function() CheckSpot(tries + 1) end) end
             return
         end
-        local low, lowIcon = {}, nil
+        local cards = {}
         for i, it in ipairs(items) do
             if (not it.minLevel or lvl >= it.minLevel) and counts[i] < math.max(1, it.min or 0) then
-                if not lowIcon and it.id and it.id ~= "@ammo" then
-                    local ok, ic
-                    if C_Item and C_Item.GetItemIconByID then ok, ic = pcall(C_Item.GetItemIconByID, it.id) end
-                    if not (ok and ic) and GetItemIcon then ok, ic = pcall(GetItemIcon, it.id) end
-                    if ok and ic then lowIcon = ic end
+                local ic
+                if it.id and it.id ~= "@ammo" then
+                    local ok, v
+                    if C_Item and C_Item.GetItemIconByID then ok, v = pcall(C_Item.GetItemIconByID, it.id) end
+                    if not (ok and v) and GetItemIcon then ok, v = pcall(GetItemIcon, it.id) end
+                    if ok and v then ic = v end
                 end
-                low[#low + 1] = string.format("%s %d/%d", ItemLabel(it), counts[i], it.min or 0)
+                cards[#cards + 1] = {
+                    title = L.as_cons_title,
+                    sub = string.format(L.as_cons_body, place, string.format("%s %d/%d", ItemLabel(it), counts[i], it.min or 0)),
+                    icon = ic,   -- sem icone: o aviso usa o emblema do Watchdog
+                    color = { 0.6, 0.5, 1 },
+                }
             end
         end
-        if #low > 0 and Cooldown("cons", sp.key) then
-            WD:BigWarning(L.as_cons_title, string.format(L.as_cons_body, place, table.concat(low, ", ")),
-                lowIcon or "Interface\\Icons\\INV_Misc_Bag_08", { 0.6, 0.5, 1 })
+        if #cards > 0 and Cooldown("cons", sp.key) then
+            local first = table.remove(cards, 1)
+            WD:BigWarning(first.title, first.sub, first.icon, first.color, 1, #cards > 0 and cards or nil)
         end
     end
 end

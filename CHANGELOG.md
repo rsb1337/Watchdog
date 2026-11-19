@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.10
+
+### Melhorias
+- Aviso de consumiveis: cada item em falta ganha o seu proprio cartao, um embaixo do outro, com o icone e a quantidade do respectivo item. Se o item nao tiver icone, mostra o emblema do Watchdog.
+
 ## 1.6.9
 
 ### Correcoes
