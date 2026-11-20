@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.6.13"
+WD.version = "1.6.14"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -568,6 +568,17 @@ end
 
 -- Captura do que voce lista na AH (preco pedido + valor de vendor). Cliente com API antiga
 -- (PostAuction) ou nova (C_AuctionHouse); o que existir e usado.
+-- Diagnostico: o que este cliente tem de API/eventos de leilao (grava em WatchdogDB.ahDiag)
+local function Diag(msg)
+    local d = WatchdogDB
+    if not d then return end
+    d.ahDiag = d.ahDiag or { api = {}, log = {} }
+    local l = d.ahDiag.log
+    l[#l + 1] = date("%H:%M:%S ") .. msg
+    if #l > 80 then table.remove(l, 1) end
+end
+local function Safe(v) local ok, s = pcall(tostring, v); return ok and s or "?" end
+
 local sellCache
 local function UnitVendor(idOrName)
     if not idOrName then return 0 end
@@ -583,6 +594,7 @@ function WD:OnSellSlot()
     end
 end
 local function OnPostAuction(minBid, buyout, runTime, stackSize, numStacks)
+    Diag(string.format("PostAuction bid=%s buyout=%s run=%s stack=%s n=%s", Safe(minBid), Safe(buyout), Safe(runTime), Safe(stackSize), Safe(numStacks)))
     local s = sellCache
     if not s then WD:OnSellSlot(); s = sellCache end
     numStacks = tonumber(numStacks) or 1
@@ -593,6 +605,7 @@ local function OnPostAuction(minBid, buyout, runTime, stackSize, numStacks)
     AHAdd(count, per * numStacks, unit * count, runTime, s and s.name)
 end
 local function OnPostItemNew(itemLocation, duration, quantity, bid, buyout)
+    Diag(string.format("PostItem dur=%s qty=%s bid=%s buyout=%s", Safe(duration), Safe(quantity), Safe(bid), Safe(buyout)))
     local id
     if C_Item and C_Item.GetItemID and itemLocation then
         local ok, v = pcall(C_Item.GetItemID, itemLocation)
@@ -603,6 +616,7 @@ local function OnPostItemNew(itemLocation, duration, quantity, bid, buyout)
     AHAdd(quantity, price, UnitVendor(id) * quantity, 3, nil)
 end
 local function OnPostCommodity(itemLocation, duration, quantity, unitPrice)
+    Diag(string.format("PostCommodity dur=%s qty=%s unit=%s", Safe(duration), Safe(quantity), Safe(unitPrice)))
     local id
     if C_Item and C_Item.GetItemID and itemLocation then
         local ok, v = pcall(C_Item.GetItemID, itemLocation)
@@ -611,6 +625,85 @@ local function OnPostCommodity(itemLocation, duration, quantity, unitPrice)
     quantity = tonumber(quantity) or 1
     AHAdd(quantity, (tonumber(unitPrice) or 0) * quantity, UnitVendor(id) * quantity, 3, nil)
 end
+-- Sincroniza com a lista REAL de leilões do jogador (fonte confiavel): { {id=, count=, price=}, ... }
+function WD:SyncOwned(owned)
+    local l = AHList()
+    local old, new = {}, {}
+    for _, e in ipairs(l) do old[#old + 1] = e end
+    for _, o in ipairs(owned) do
+        local found
+        for i, e in ipairs(old) do
+            if e.count == o.count and math.abs(e.price - o.price) < 1 and (not e.id or not o.id or e.id == o.id) then
+                found = table.remove(old, i); break
+            end
+        end
+        if found then
+            found.id = found.id or o.id
+            new[#new + 1] = found
+        else
+            new[#new + 1] = { t = time(), sid = WatchdogCharDB.sessionStart, count = o.count, price = o.price,
+                vendor = UnitVendor(o.id or o.name) * o.count, id = o.id, name = o.name,
+                exp = time() + 49 * 3600 }
+        end
+    end
+    WatchdogCharDB.ahList = new
+    Diag("sync: " .. #owned .. " leilao(oes) ativo(s)")
+end
+
+local function ReadOwnedLegacy()
+    if not (GetNumAuctionItems and GetAuctionItemInfo) then return end
+    local ok, n = pcall(GetNumAuctionItems, "owner")
+    if not ok or type(n) ~= "number" then return end
+    local owned = {}
+    for i = 1, n do
+        local ok2, name, _, count, _, _, _, _, minBid, _, buyout, _, _, _, _, _, saleStatus, itemId = pcall(GetAuctionItemInfo, "owner", i)
+        if ok2 and name and saleStatus ~= 1 then
+            local price = (tonumber(buyout) and buyout > 0) and buyout or tonumber(minBid) or 0
+            owned[#owned + 1] = { id = itemId, name = name, count = tonumber(count) or 1, price = price }
+        end
+    end
+    WD:SyncOwned(owned)
+end
+
+local function ReadOwnedNew()
+    local A = C_AuctionHouse
+    if not (A and A.GetNumOwnedAuctions and A.GetOwnedAuctionInfo) then return end
+    local ok, n = pcall(A.GetNumOwnedAuctions)
+    if not ok or type(n) ~= "number" then return end
+    local owned = {}
+    for i = 1, n do
+        local ok2, info = pcall(A.GetOwnedAuctionInfo, i)
+        if ok2 and type(info) == "table" and (info.status == nil or info.status == 0) then
+            local q = tonumber(info.quantity) or 1
+            local p = (tonumber(info.buyoutAmount) and info.buyoutAmount > 0) and info.buyoutAmount or tonumber(info.bidAmount) or 0
+            local id = info.itemKey and info.itemKey.itemID
+            owned[#owned + 1] = { id = id, count = q, price = p * (info.itemKey and q or 1) }
+            Diag(string.format("owned[%d] id=%s qty=%s bid=%s buyout=%s status=%s", i, Safe(id), Safe(info.quantity), Safe(info.bidAmount), Safe(info.buyoutAmount), Safe(info.status)))
+        end
+    end
+    WD:SyncOwned(owned)
+end
+
+local diagEvents = {
+    "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "AUCTION_OWNED_LIST_UPDATE", "NEW_AUCTION_UPDATE",
+    "AUCTION_MULTISELL_START", "AUCTION_MULTISELL_UPDATE", "AUCTION_MULTISELL_FAILURE",
+    "OWNED_AUCTIONS_UPDATED", "AUCTION_HOUSE_AUCTION_CREATED", "AUCTION_CANCELED", "AUCTION_HOUSE_POST_ERROR",
+    "AUCTION_HOUSE_POST_WARNING",
+}
+function WD:OnAuctionEvent(event, ...)
+    Diag(event .. " " .. Safe((...)))
+    if event == "AUCTION_HOUSE_SHOW" then
+        if GetOwnerAuctionItems then pcall(GetOwnerAuctionItems) end
+        if C_AuctionHouse and C_AuctionHouse.QueryOwnedAuctions then pcall(C_AuctionHouse.QueryOwnedAuctions, {}) end
+    elseif event == "AUCTION_OWNED_LIST_UPDATE" then
+        pcall(ReadOwnedLegacy)
+    elseif event == "OWNED_AUCTIONS_UPDATED" or event == "AUCTION_HOUSE_AUCTION_CREATED" then
+        pcall(ReadOwnedNew)
+    elseif event == "AUCTION_HOUSE_AUCTION_CREATED" and GetOwnerAuctionItems then
+        pcall(GetOwnerAuctionItems)
+    end
+end
+
 local ahHooked
 function WD:SetupAHHooks()
     if ahHooked then return end
@@ -620,6 +713,23 @@ function WD:SetupAHHooks()
         if C_AuctionHouse.PostItem then pcall(hooksecurefunc, C_AuctionHouse, "PostItem", function(...) pcall(OnPostItemNew, ...) end) end
         if C_AuctionHouse.PostCommodity then pcall(hooksecurefunc, C_AuctionHouse, "PostCommodity", function(...) pcall(OnPostCommodity, ...) end) end
     end
+    -- APIs disponiveis neste cliente (para diagnostico)
+    if WatchdogDB then
+        WatchdogDB.ahDiag = WatchdogDB.ahDiag or { api = {}, log = {} }
+        local a = WatchdogDB.ahDiag.api
+        a.PostAuction = PostAuction and true or false
+        a.GetAuctionSellItemInfo = GetAuctionSellItemInfo and true or false
+        a.GetNumAuctionItems = GetNumAuctionItems and true or false
+        a.GetOwnerAuctionItems = GetOwnerAuctionItems and true or false
+        a.C_AuctionHouse = C_AuctionHouse and true or false
+        a.PostItem = (C_AuctionHouse and C_AuctionHouse.PostItem) and true or false
+        a.PostCommodity = (C_AuctionHouse and C_AuctionHouse.PostCommodity) and true or false
+        a.GetOwnedAuctionInfo = (C_AuctionHouse and C_AuctionHouse.GetOwnedAuctionInfo) and true or false
+        a.version = select(4, GetBuildInfo())
+    end
+    local df = CreateFrame("Frame")
+    for _, e in ipairs(diagEvents) do pcall(df.RegisterEvent, df, e) end
+    df:SetScript("OnEvent", function(_, event, ...) pcall(WD.OnAuctionEvent, WD, event, ...) end)
     if WD.ev then pcall(WD.ev.RegisterEvent, WD.ev, "NEW_AUCTION_UPDATE") end
 end
 

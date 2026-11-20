@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.14
+
+### Correcoes
+- Leilao (AH): o addon agora le a lista real dos seus leiloes ativos ao abrir a casa de leiloes, alem de capturar o preco na hora de postar. Corrige o quadro Auction house que ficava em 0.
+- Registro de diagnostico dos eventos/API de leilao do cliente (WatchdogDB.ahDiag) para ajustar a captura.
+
 ## 1.6.13
 
 ### Mudancas
