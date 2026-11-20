@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.15
+
+### Correcoes
+- Leilao (AH): corrigido o valor do Auction house que continuava em 0 com a API nova de leilao. A listagem recem postada nao e mais apagada por uma leitura atrasada da lista do jogo, e recolher itens cancelados no correio nao apaga mais as outras listagens.
+
 ## 1.6.14
 
 ### Correcoes

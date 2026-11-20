@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.6.14"
+WD.version = "1.6.15"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -550,7 +550,7 @@ function WD:UpdateBagValue()
     if lastBags then
         local d = scan.value - lastBags
         if d < 0 and (ahOpen or mailOpen) then TransitAdd(-d)
-        elseif d > 0 and mailOpen then TransitTake(d); AHTakeVendor(d) end
+        elseif d > 0 and mailOpen then TransitTake(d) end
     end
     lastBags = scan.value
     local total = scan.value + (WatchdogCharDB.bankValue or 0) + TransitTotal()
@@ -646,6 +646,10 @@ function WD:SyncOwned(owned)
                 exp = time() + 49 * 3600 }
         end
     end
+    -- listagens registradas ha poucos segundos ainda podem nao aparecer na lista do jogo (que atrasa)
+    for _, e in ipairs(old) do
+        if time() - (e.t or 0) < 20 then new[#new + 1] = e end
+    end
     WatchdogCharDB.ahList = new
     Diag("sync: " .. #owned .. " leilao(oes) ativo(s)")
 end
@@ -697,10 +701,12 @@ function WD:OnAuctionEvent(event, ...)
         if C_AuctionHouse and C_AuctionHouse.QueryOwnedAuctions then pcall(C_AuctionHouse.QueryOwnedAuctions, {}) end
     elseif event == "AUCTION_OWNED_LIST_UPDATE" then
         pcall(ReadOwnedLegacy)
-    elseif event == "OWNED_AUCTIONS_UPDATED" or event == "AUCTION_HOUSE_AUCTION_CREATED" then
+    elseif event == "OWNED_AUCTIONS_UPDATED" then
         pcall(ReadOwnedNew)
-    elseif event == "AUCTION_HOUSE_AUCTION_CREATED" and GetOwnerAuctionItems then
-        pcall(GetOwnerAuctionItems)
+    elseif event == "AUCTION_HOUSE_AUCTION_CREATED" or event == "AUCTION_CANCELED" then
+        -- pede a lista atualizada; quando chegar, OWNED_AUCTIONS_UPDATED faz a leitura
+        if C_AuctionHouse and C_AuctionHouse.QueryOwnedAuctions then pcall(C_AuctionHouse.QueryOwnedAuctions, {}) end
+        if GetOwnerAuctionItems then pcall(GetOwnerAuctionItems) end
     end
 end
 
