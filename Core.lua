@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.6.16"
+WD.version = "1.6.17"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -1256,23 +1256,49 @@ end
 -- Tecla de alvo: um botao seguro com um "macro" montado a partir da Black list.
 -- Apertar a tecla seleciona como alvo o primeiro nome da lista que estiver por perto.
 local targetBtn
+-- Fora de combate: escolhe, entre as plaquinhas, um alvo VIVO da Black list; apertando de novo, passa pro proximo.
+function WD:PickAliveTarget(btn)
+    if InCombatLockdown() then return end
+    local plates = C_NamePlate and C_NamePlate.GetNamePlates and C_NamePlate.GetNamePlates()
+    if not plates then return end
+    local cands, curIdx = {}, nil
+    local curGUID = UnitExists("target") and UnitGUID("target") or nil
+    for _, plate in ipairs(plates) do
+        local u = plate.namePlateUnitToken or (plate.UnitFrame and plate.UnitFrame.unit)
+        if u and UnitExists(u) and not UnitIsDead(u) and WD:IsUnitWatched(u) then
+            cands[#cands + 1] = u
+            if curGUID and UnitGUID(u) == curGUID then curIdx = #cands end
+        end
+    end
+    if #cands == 0 then return end
+    local pick = cands[((curIdx or 0) % #cands) + 1]
+    btn:SetAttribute("type", "target")
+    btn:SetAttribute("unit", pick)
+end
 function WD:UpdateTargetMacro()
     if InCombatLockdown() then WD._targetPending = true; return end
     WD._targetPending = nil
     if not targetBtn then
         targetBtn = CreateFrame("Button", "WatchdogTargetBtn", UIParent, "SecureActionButtonTemplate")
         targetBtn:RegisterForClicks("AnyUp", "AnyDown")
-        targetBtn:SetAttribute("type", "macro")
+        targetBtn:SetScript("PreClick", function(self) WD:PickAliveTarget(self) end)
+        targetBtn:SetScript("PostClick", function(self)
+            if not InCombatLockdown() then self:SetAttribute("type", "macro") end
+        end)
     end
-    local lines, len = { "/cleartarget [dead]" }, 20
+    targetBtn:SetAttribute("type", "macro")
+    -- Em combate o botao nao pode ser alterado: vale este comando (por nome). Ele tambem pode
+    -- pegar corpos, entao repete e limpa o alvo se ele estiver morto.
+    local block, len = {}, 0
     for _, kind in ipairs({ "pve", "pvp" }) do
         for _, name in ipairs(WD:WatchList(kind)) do
             local line = "/targetexact [noexists] " .. name
-            if len + #line + 1 > 1000 then break end
-            lines[#lines + 1] = line; len = len + #line + 1
+            if len + #line + 1 > 300 then break end
+            block[#block + 1] = line; len = len + #line + 1
         end
     end
-    targetBtn:SetAttribute("macrotext", table.concat(lines, "\n"))
+    local b = table.concat(block, "\n")
+    targetBtn:SetAttribute("macrotext", "/cleartarget [dead]\n" .. b .. "\n/cleartarget [dead]\n" .. b .. "\n/cleartarget [dead]\n" .. b .. "\n/cleartarget [dead]")
     ClearOverrideBindings(targetBtn)
     local key = WatchdogDB and WatchdogDB.targetKey
     if key == nil then key = "CAPSLOCK" end

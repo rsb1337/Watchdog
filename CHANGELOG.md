@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.17
+
+### Correcoes
+- Tecla de alvo da Black list: nao seleciona mais mobs mortos fora de combate. Ela escolhe so alvos vivos da lista entre as plaquinhas e, apertando de novo, passa para o proximo. Em combate usa o comando por nome, que limpa o alvo se ele estiver morto.
+
 ## 1.6.16
 
 ### Novo
