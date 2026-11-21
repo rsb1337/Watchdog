@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.6.18"
+WD.version = "1.6.19"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -1292,13 +1292,15 @@ function WD:UpdateTargetMacro()
     local block, len = {}, 0
     for _, kind in ipairs({ "pve", "pvp" }) do
         for _, name in ipairs(WD:WatchList(kind)) do
-            local line = "/targetexact [noexists] " .. name
+            local line = "/targetexact " .. name
             if len + #line + 1 > 300 then break end
             block[#block + 1] = line; len = len + #line + 1
         end
     end
-    local b = table.concat(block, "\n")
-    targetBtn:SetAttribute("macrotext", "/cleartarget [dead]\n" .. b .. "\n/cleartarget [dead]\n" .. b .. "\n/cleartarget [dead]\n" .. b .. "\n/cleartarget [dead]")
+    -- sem [noexists]: sobrepoe o alvo atual. Linhas em ordem inversa: o ultimo que existe (o primeiro da lista) vence.
+    local rev = {}
+    for i = #block, 1, -1 do rev[#rev + 1] = block[i] end
+    targetBtn:SetAttribute("macrotext", table.concat(rev, "\n") .. "\n/cleartarget [dead]")
     ClearOverrideBindings(targetBtn)
     local key = WatchdogDB and WatchdogDB.targetKey
     if key == nil then key = "CAPSLOCK" end

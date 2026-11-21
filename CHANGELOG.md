@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.19
+
+### Corrigido
+- Tecla de alvo da Black list nao funcionava com algo ja targetado (o comando de combate usava [noexists]). Agora sobrepoe o alvo atual.
+
 ## 1.6.18
 
 ### Novo
