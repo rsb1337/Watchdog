@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.6.17"
+WD.version = "1.6.18"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -1276,7 +1276,7 @@ function WD:PickAliveTarget(btn)
     btn:SetAttribute("unit", pick)
 end
 function WD:UpdateTargetMacro()
-    if InCombatLockdown() then WD._targetPending = true; return end
+    if InCombatLockdown() then WD._targetPending = true; WD.targetKeyState = "pending"; return end
     WD._targetPending = nil
     if not targetBtn then
         targetBtn = CreateFrame("Button", "WatchdogTargetBtn", UIParent, "SecureActionButtonTemplate")
@@ -1303,7 +1303,12 @@ function WD:UpdateTargetMacro()
     local key = WatchdogDB and WatchdogDB.targetKey
     if key == nil then key = "CAPSLOCK" end
     if key ~= "" and key:upper() ~= "OFF" then
-        SetOverrideBindingClick(targetBtn, true, key:upper(), "WatchdogTargetBtn")
+        key = key:upper():gsub("%s+", "")
+        pcall(SetOverrideBindingClick, targetBtn, true, key, "WatchdogTargetBtn", "LeftButton")
+        local ok, act = pcall(GetBindingAction, key, true)
+        WD.targetKeyState = (ok and type(act) == "string" and act:find("WatchdogTargetBtn", 1, true)) and "ok" or "fail"
+    else
+        WD.targetKeyState = "off"
     end
 end
 

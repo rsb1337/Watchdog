@@ -1227,12 +1227,71 @@ function BuildBlackPanel(host)
     hint:SetJustifyH("LEFT")
     hint:SetText(L.black_hint)
 
+    -- Tecla de alvo (clique e aperte a tecla desejada)
+    local keyLbl = FS(p, 11, C.dim, "LEFT")
+    keyLbl:SetPoint("TOPLEFT", p, "TOPLEFT", 2, -39)
+    keyLbl:SetText(L.black_key)
+    local keyBtn = MakeChip(p, "", 150)
+    keyBtn:SetPoint("LEFT", keyLbl, "RIGHT", 8, 0)
+    local resetChip = MakeChip(p, L.black_key_reset, 62)
+    resetChip:SetPoint("LEFT", keyBtn, "RIGHT", 6, 0)
+    local offChip = MakeChip(p, L.w_off, 46)
+    offChip:SetPoint("LEFT", resetChip, "RIGHT", 6, 0)
+    local keyStatus = FS(p, 11, C.dim, "LEFT")
+    keyStatus:SetPoint("LEFT", offChip, "RIGHT", 10, 0)
+    local capturing = false
+    local function KeyText()
+        local k = WatchdogDB.targetKey
+        if k == nil then k = "CAPSLOCK" end
+        if k == "" or k == "OFF" then return L.w_off end
+        return k
+    end
+    local function RefreshKey()
+        keyBtn.text:SetText(capturing and L.black_key_press or KeyText())
+        local st = WD.targetKeyState
+        local map = {
+            ok = { L.black_key_ok, C.green }, fail = { L.black_key_fail, C.red },
+            pending = { L.black_key_pending, C.gold }, off = { L.black_key_off, C.dim },
+        }
+        local m = map[st or "off"] or map.off
+        keyStatus:SetText(m[1]); keyStatus:SetTextColor(m[2][1], m[2][2], m[2][3])
+    end
+    local function ApplyKey(k)
+        capturing = false
+        keyBtn:EnableKeyboard(false)
+        WatchdogDB.targetKey = k
+        WD:UpdateTargetMacro()
+        RefreshKey()
+    end
+    local IGNORE = { LSHIFT = 1, RSHIFT = 1, LCTRL = 1, RCTRL = 1, LALT = 1, RALT = 1, LMETA = 1, RMETA = 1 }
+    keyBtn:RegisterForClicks("AnyUp")
+    keyBtn:SetScript("OnClick", function(self, button)
+        if capturing and button ~= "LeftButton" then
+            local m = { MiddleButton = "BUTTON3", Button4 = "BUTTON4", Button5 = "BUTTON5" }
+            if m[button] then ApplyKey(m[button]) end
+            return
+        end
+        capturing = not capturing
+        self:EnableKeyboard(capturing)
+        RefreshKey()
+    end)
+    keyBtn:SetScript("OnKeyDown", function(self, key)
+        if not capturing then return end
+        if key == "ESCAPE" then capturing = false; self:EnableKeyboard(false); RefreshKey(); return end
+        if IGNORE[key] then return end
+        local mods = (IsAltKeyDown() and "ALT-" or "") .. (IsControlKeyDown() and "CTRL-" or "") .. (IsShiftKeyDown() and "SHIFT-" or "")
+        ApplyKey(mods .. key:upper())
+    end)
+    resetChip:SetScript("OnClick", function() ApplyKey(nil) end)
+    offChip:SetScript("OnClick", function() ApplyKey("OFF") end)
+    p.RefreshKey = RefreshKey
+
     local colW = math.floor((CONTENT_W - 12) / 2)
     p.cols = {}
     for i, kind in ipairs({ "pve", "pvp" }) do
         local accent = kind == "pvp" and C.purple or C.blue
         local col = CreateFrame("Frame", nil, p, BT)
-        col:SetPoint("TOPLEFT", p, "TOPLEFT", (i - 1) * (colW + 12), -50)
+        col:SetPoint("TOPLEFT", p, "TOPLEFT", (i - 1) * (colW + 12), -66)
         col:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", (i - 1) * (colW + 12), 0)
         col:SetWidth(colW)
         Flat(col, C.card, C.border, 0.9)
@@ -1331,6 +1390,7 @@ function BuildBlackPanel(host)
 
     function WD:RefreshBlack()
         if not p:IsShown() then return end
+        RefreshKey()
         for kind, col in pairs(p.cols) do
             local list = WD:WatchList(kind)
             col.listLbl:SetText(string.format(L.black_list, #list))

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.18
+
+### Novo
+- Black list: seletor da tecla de alvo direto no painel. Clique no botao e aperte a tecla (com Alt/Ctrl/Shift se quiser) ou um botao do mouse; botoes Padrao (CapsLock) e Off; indicador mostra se a tecla esta ativa, nao aceita ou aguardando o fim do combate.
+
 ## 1.6.17
 
 ### Correcoes
