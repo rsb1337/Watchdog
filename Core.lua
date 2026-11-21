@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.6.19"
+WD.version = "1.6.20"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -1280,7 +1280,7 @@ function WD:UpdateTargetMacro()
     WD._targetPending = nil
     if not targetBtn then
         targetBtn = CreateFrame("Button", "WatchdogTargetBtn", UIParent, "SecureActionButtonTemplate")
-        targetBtn:RegisterForClicks("AnyUp", "AnyDown")
+        targetBtn:RegisterForClicks("AnyDown")
         targetBtn:SetScript("PreClick", function(self) WD:PickAliveTarget(self) end)
         targetBtn:SetScript("PostClick", function(self)
             if not InCombatLockdown() then self:SetAttribute("type", "macro") end

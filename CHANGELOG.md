@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.20
+
+### Corrigido
+- Tecla de alvo da Black list: o botao agora reage so ao apertar (antes reagia ao apertar e ao soltar, o que podia disparar duas vezes por aperto).
+
 ## 1.6.19
 
 ### Corrigido
