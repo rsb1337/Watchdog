@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.6.15"
+WD.version = "1.6.16"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -1240,6 +1240,7 @@ function WD:AddWatch(name, kind)
     if name == "" then return false end
     WatchTable(kind, true)[name:lower()] = name
     if WD.RefreshNameplates then WD:RefreshNameplates() end
+    WD:UpdateTargetMacro()
     return true
 end
 
@@ -1249,6 +1250,35 @@ function WD:RemoveWatch(name, kind)
     if name == "" or not t then return end
     t[name:lower()] = nil
     if WD.RefreshNameplates then WD:RefreshNameplates() end
+    WD:UpdateTargetMacro()
+end
+
+-- Tecla de alvo: um botao seguro com um "macro" montado a partir da Black list.
+-- Apertar a tecla seleciona como alvo o primeiro nome da lista que estiver por perto.
+local targetBtn
+function WD:UpdateTargetMacro()
+    if InCombatLockdown() then WD._targetPending = true; return end
+    WD._targetPending = nil
+    if not targetBtn then
+        targetBtn = CreateFrame("Button", "WatchdogTargetBtn", UIParent, "SecureActionButtonTemplate")
+        targetBtn:RegisterForClicks("AnyUp", "AnyDown")
+        targetBtn:SetAttribute("type", "macro")
+    end
+    local lines, len = { "/cleartarget [dead]" }, 20
+    for _, kind in ipairs({ "pve", "pvp" }) do
+        for _, name in ipairs(WD:WatchList(kind)) do
+            local line = "/targetexact [noexists] " .. name
+            if len + #line + 1 > 1000 then break end
+            lines[#lines + 1] = line; len = len + #line + 1
+        end
+    end
+    targetBtn:SetAttribute("macrotext", table.concat(lines, "\n"))
+    ClearOverrideBindings(targetBtn)
+    local key = WatchdogDB and WatchdogDB.targetKey
+    if key == nil then key = "CAPSLOCK" end
+    if key ~= "" and key:upper() ~= "OFF" then
+        SetOverrideBindingClick(targetBtn, true, key:upper(), "WatchdogTargetBtn")
+    end
 end
 
 function WD:WatchList(kind)
@@ -1490,6 +1520,7 @@ ev:SetScript("OnEvent", function(_, event, ...)
         WD:MarkActive()
     elseif event == "PLAYER_REGEN_ENABLED" then
         if WD._cvarPending and WD.MaxNameplateRange then WD:MaxNameplateRange() end
+        if WD._targetPending then WD:UpdateTargetMacro() end
     elseif event == "NAME_PLATE_UNIT_ADDED" then
         WD:RememberSeen(arg1)
         pcall(CheckRare, arg1)
@@ -1508,6 +1539,7 @@ ev:SetScript("OnEvent", function(_, event, ...)
         playerGUID = UnitGUID("player")
         petGUID = UnitGUID("pet")
         pcall(WD.SetupAHHooks, WD)
+        pcall(WD.UpdateTargetMacro, WD)
         if arg1 then
             -- Nova sessao a cada login (um /reload mantem a sessao).
             NewSession()

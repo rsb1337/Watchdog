@@ -1232,7 +1232,7 @@ function BuildBlackPanel(host)
     for i, kind in ipairs({ "pve", "pvp" }) do
         local accent = kind == "pvp" and C.purple or C.blue
         local col = CreateFrame("Frame", nil, p, BT)
-        col:SetPoint("TOPLEFT", p, "TOPLEFT", (i - 1) * (colW + 12), -32)
+        col:SetPoint("TOPLEFT", p, "TOPLEFT", (i - 1) * (colW + 12), -50)
         col:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", (i - 1) * (colW + 12), 0)
         col:SetWidth(colW)
         Flat(col, C.card, C.border, 0.9)
@@ -2003,6 +2003,11 @@ SlashCmdList.WATCHDOG = function(msg)
         if WD.ToggleConfig then WD:ToggleConfig() end
     elseif cmd == "premium" or cmd == "lista" or cmd == "watchlist" or cmd == "blacklist" or cmd == "black" then
         WD:Toggle("black")
+    elseif cmd == "alvo" or cmd == "targetkey" or cmd == "target" then
+        local k = strtrim(rest or "")
+        if k ~= "" then WatchdogDB.targetKey = (k:lower() == "off" or k:lower() == "desligar") and "OFF" or k:upper(); WD:UpdateTargetMacro() end
+        local cur = WatchdogDB.targetKey; if cur == nil then cur = "CAPSLOCK" end
+        print("|cffffd100Watchdog:|r " .. string.format(L.msg_targetkey, cur))
     elseif cmd == "nameplates" or cmd == "plaquinhas" or cmd == "alcance" then
         WD:MaxNameplateRange()
         print("|cffffd100Watchdog:|r " .. L.msg_nameplates)

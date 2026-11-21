@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.16
+
+### Novo
+- Tecla de alvo da Black list: o CapsLock (configuravel) seleciona como alvo o primeiro nome da Black list que estiver por perto, PvE e PvP. O addon monta o comando sozinho e o atualiza a cada nome adicionado ou removido. Mudar a tecla: /wd alvo TECLA; desligar: /wd alvo off.
+
 ## 1.6.15
 
 ### Correcoes
