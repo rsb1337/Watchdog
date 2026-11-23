@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.13
+
+### Alterado
+- Organizar por cor ficou muito mais rapido: faz varias trocas por quadro (esperando so o servidor liberar os slots) e, no fim, confere o resultado e refaz o que sobrou.
+
 ## 1.7.12
 
 ### Corrigido

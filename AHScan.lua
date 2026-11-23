@@ -474,12 +474,8 @@ local function SortCat(id, bound)
 end
 local function SortMsg(m) print("|cffffd100Watchdog:|r " .. m) end
 
-function WD:SortBagsByColor()
-    if sorting then return end
+local function SortPlan()
     local CC = C_Container
-    if not (CC and CC.GetContainerItemInfo and CC.PickupContainerItem) then SortMsg(L.sort_noapi); return end
-    if InCombatLockdown and InCombatLockdown() then SortMsg(L.sort_combat); return end
-    if GetCursorInfo and GetCursorInfo() then SortMsg(L.sort_cursor); return end
     local slots, items = {}, {}
     for bag = 0, (NUM_BAG_SLOTS or 4) do
         local n = (CC.GetContainerNumSlots and CC.GetContainerNumSlots(bag)) or 0
@@ -499,7 +495,6 @@ function WD:SortBagsByColor()
             items[#items + 1] = { idx = i, id = info.itemID, cat = SortCat(info.itemID, bound) }
         end
     end
-    if #items == 0 then return end
     local order = {}
     for i, it in ipairs(items) do order[i] = it end
     table.sort(order, function(a, b)
@@ -507,7 +502,6 @@ function WD:SortBagsByColor()
         if a.id ~= b.id then return a.id < b.id end
         return a.idx < b.idx
     end)
-    -- simulacao: cur[pos] = item (por referencia) naquela posicao
     local cur = {}
     for _, it in ipairs(items) do cur[it.idx] = it end
     local ops = {}
@@ -519,48 +513,65 @@ function WD:SortBagsByColor()
             if j then
                 -- mesmo item (mesma id) no destino: nao troca (o jogo juntaria as pilhas)
                 if not (cur[pos] and cur[pos].id == want.id) then
-                    ops[#ops + 1] = { pos, j, want.id }
+                    ops[#ops + 1] = { slots[pos], slots[j], want.id }
                 end
                 cur[pos], cur[j] = cur[j], cur[pos]
             end
         end
     end
+    return ops
+end
+
+function WD:SortBagsByColor()
+    if sorting then return end
+    local CC = C_Container
+    if not (CC and CC.GetContainerItemInfo and CC.PickupContainerItem) then SortMsg(L.sort_noapi); return end
+    if InCombatLockdown and InCombatLockdown() then SortMsg(L.sort_combat); return end
+    if GetCursorInfo and GetCursorInfo() then SortMsg(L.sort_cursor); return end
+    local ops = SortPlan()
     if #ops == 0 then SortMsg(L.sort_already); return end
     sorting = true
-    local k, stage, tries = 1, 1, 0
+    local passes, idle = 1, 0
+    local k = 1
     local function abort(m) sorting = false; SortMsg(m) end
+    local function locked(p)
+        local i = CC.GetContainerItemInfo(p[1], p[2])
+        return i and i.isLocked
+    end
     local function tick()
         if not sorting then return end
         if InCombatLockdown and InCombatLockdown() then abort(L.sort_combat); return end
-        local op = ops[k]
-        if not op then sorting = false; SortMsg(L.sort_done); WD:UpdateBagBorders(); return end
-        local a, b = slots[op[1]], slots[op[2]]
-        local ia = CC.GetContainerItemInfo(a[1], a[2])
-        local ib = CC.GetContainerItemInfo(b[1], b[2])
-        tries = tries + 1
-        if tries > 40 then abort(L.sort_stuck); return end
-        if stage == 1 then
-            if (ia and ia.isLocked) or (ib and ib.isLocked) then C_Timer.After(0.15, tick) return end
-            if GetCursorInfo and GetCursorInfo() then abort(L.sort_cursor); return end
-            CC.PickupContainerItem(b[1], b[2])        -- pega o item que vai para a posicao
-            stage = 2
-        elseif stage == 2 then
-            CC.PickupContainerItem(a[1], a[2])        -- solta na posicao (troca com o que estiver la)
-            stage = 3
-        elseif stage == 3 then
-            if GetCursorInfo and GetCursorInfo() then
-                CC.PickupContainerItem(b[1], b[2])    -- devolve o item deslocado ao lugar de origem
-            end
-            stage = 4
-        else
-            local chk = CC.GetContainerItemInfo(a[1], a[2])
-            if chk and chk.itemID == op[3] then
-                k, stage, tries = k + 1, 1, 0
-            elseif tries > 12 then
-                abort(L.sort_stuck); return
-            end
+        -- varias trocas por quadro, enquanto os slots envolvidos nao estiverem travados pelo servidor
+        local did = 0
+        while ops[k] and did < 8 do
+            local op = ops[k]
+            local a, b = op[1], op[2]
+            if locked(a) or locked(b) or (GetCursorInfo and GetCursorInfo()) then break end
+            CC.PickupContainerItem(b[1], b[2])
+            CC.PickupContainerItem(a[1], a[2])
+            if GetCursorInfo and GetCursorInfo() then CC.PickupContainerItem(b[1], b[2]) end
+            k = k + 1; did = did + 1
         end
-        C_Timer.After(0.15, tick)
+        if did == 0 and ops[k] then
+            idle = idle + 1
+            if idle > 100 then abort(L.sort_stuck); return end
+        else
+            idle = 0
+        end
+        if ops[k] then C_Timer.After(0.03, tick); return end
+        -- terminou os movimentos: confere o resultado e, se sobrou algo, faz mais uma passada
+        C_Timer.After(0.3, function()
+            if not sorting then return end
+            local rest = SortPlan()
+            if #rest == 0 then
+                sorting = false; SortMsg(L.sort_done); WD:UpdateBagBorders()
+            elseif passes >= 3 then
+                abort(L.sort_stuck)
+            else
+                passes = passes + 1; ops = rest; k = 1; idle = 0
+                tick()
+            end
+        end)
     end
     SortMsg(string.format(L.sort_start, #ops))
     tick()
