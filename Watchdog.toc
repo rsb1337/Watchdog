@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: Watchdog
 ## Author: rsb
-## Version: 1.7.14
+## Version: 1.7.15
 ## Notes: Tracks PvE/PvP kills, per-mob drops, money, honor, XP/hour and gold/hour, with an inventory tab and a premium mob highlighter. EN and PT-BR.
 ## Notes-ptBR: Rastreia kills PvE/PvP, drops por mob, dinheiro, honra, XP/hora e ouro/hora, com aba de inventário e destaque de mobs premium. EN e PT-BR.
 ## SavedVariables: WatchdogDB

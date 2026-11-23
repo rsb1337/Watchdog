@@ -3,9 +3,10 @@ local _, WD = ...
 local L = WD.L
 
 local scanning, ahOpen, processing = false, false, false
+local evCount
 local panel               -- painel do scan (preso na janela da AH do WoW)
 local evToken = 0
-local CHUNK = 400
+local CHUNK = 3000
 local scanStart
 
 function WD:AHScanInfo()
@@ -219,6 +220,7 @@ local function Process()
     if processing then return end
     processing = true
     local A = C_AuctionHouse
+    if not scanning then processing = false return end
     local n = A.GetNumReplicateItems and A.GetNumReplicateItems() or 0
     Dlog("lista recebida: " .. n .. " leiloes")
     if n <= 0 then Fail(L.ah_scan_empty); return end
@@ -226,6 +228,14 @@ local function Process()
     local stSold, stNoBuy, stNoId, stOk = 0, 0, 0, 0
     local function step()
         if not scanning then return end
+        local nowN = A.GetNumReplicateItems and A.GetNumReplicateItems() or n
+        if nowN ~= n and (WD._restarts or 0) < 3 then
+            WD._restarts = (WD._restarts or 0) + 1
+            Dlog("lista mudou durante a leitura (" .. n .. " -> " .. nowN .. "); recomecando")
+            processing = false
+            C_Timer.After(0.5, Process)
+            return
+        end
         local last = math.min(n, i + CHUNK - 1)
         for k = i, last do
             local ok, name, _, cnt, _, _, _, _, _, _, buyout, _, _, _, _, _, saleStatus, itemID = pcall(A.GetReplicateItemInfo, k)
@@ -276,6 +286,7 @@ function WD:StartAHScan()
     Anchor(); panel:Show()
     if not (A and A.ReplicateItems) then Fail(L.ah_noapi); return end
     scanning, processing = true, false
+    WD._restarts = 0
     scanStart = GetTime()
     evToken = evToken + 1
     Paint("wait", 0, L.ah_waiting, { 1, 0.85, 0.3 })
@@ -327,7 +338,8 @@ f:SetScript("OnEvent", function(_, event)
         if scanning then scanning, processing = false, false; Dlog("AH fechada durante o scan") end
         if panel then panel:Hide() end
     elseif event == "REPLICATE_ITEM_LIST_UPDATE" then
-        Dlog("evento REPLICATE_ITEM_LIST_UPDATE (scanning=" .. tostring(scanning) .. ")")
+        evCount = (evCount or 0) + 1
+        if evCount <= 3 then Dlog("evento REPLICATE_ITEM_LIST_UPDATE (scanning=" .. tostring(scanning) .. ")") end
         if scanning and not processing then
             WD._replicating = true
             evToken = evToken + 1
@@ -335,10 +347,24 @@ f:SetScript("OnEvent", function(_, event)
             -- espera a lista "assentar" (pode chegar em varios eventos)
             Paint("wait", 0, L.ah_receiving, { 1, 0.85, 0.3 })
             C_Timer.After(1.0, function()
-                if token == evToken and scanning and not processing then
-                    WD._replicating = nil
-                    Process()
+                if token ~= evToken or not scanning or processing then return end
+                -- so le quando a quantidade de leiloes parar de crescer (3s seguidos iguais)
+                local A = C_AuctionHouse
+                local last, same = -1, 0
+                local function settle()
+                    if token ~= evToken or not scanning or processing then return end
+                    local n = A.GetNumReplicateItems and A.GetNumReplicateItems() or 0
+                    if n == last then same = same + 1 else same, last = 0, n end
+                    if same >= 3 or (GetTime() - scanStart) > 85 then
+                        WD._replicating = nil
+                        Dlog("lista estabilizada: " .. n .. " leiloes")
+                        Process()
+                    else
+                        Paint("wait", 0, string.format(L.ah_receiving_n or "Receiving the list... %d auctions", n), { 1, 0.85, 0.3 })
+                        C_Timer.After(1.0, settle)
+                    end
                 end
+                settle()
             end)
         end
     elseif event == "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED" then

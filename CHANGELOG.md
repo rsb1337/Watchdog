@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.15
+
+### Corrigido
+- Scan da AH incompleto (ex.: Runecloth gravado com 2.510 unidades a 12s80c quando a AH tinha 16.723 a 6s06c): o addon agora so comeca a ler quando a quantidade de leiloes para de crescer (3s seguidos iguais), le em blocos maiores e recomeca se a lista mudar durante a leitura.
+- Diagnostico menos poluido: eventos repetidos da AH deixam de lotar o log; ficam registrados o tamanho da lista estabilizada e as estatisticas do scan.
+
 ## 1.7.14
 
 ### Novo
