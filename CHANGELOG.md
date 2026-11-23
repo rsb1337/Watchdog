@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.11
+
+### Novo
+- Botao "Organizar por cor" ao lado da moeda na janela da bolsa do WoW: reorganiza as bolsas colocando primeiro os itens apagados (sem venda), depois os da Casa de Leiloes e por ultimo os do vendor. Faz um movimento por vez, para se em combate e nao mistura pilhas. Bolsas especiais (municao, profissao) nao sao mexidas.
+
+### Corrigido
+- Item que vira soulbound ao ser equipado (bind ao equipar) agora e detectado como soulbound pelo tooltip, entao deixa de aparecer como item de AH (laranja) e passa a valer so o vendor.
+
 ## 1.7.10
 
 ### Corrigido

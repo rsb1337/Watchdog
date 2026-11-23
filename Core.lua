@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.7.10"
+WD.version = "1.7.11"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -485,7 +485,7 @@ local function ReadSlot(bag, slot)
     if C_Container and C_Container.GetContainerItemInfo then
         local info = C_Container.GetContainerItemInfo(bag, slot)
         if info then
-            return info.iconFileID, info.stackCount or 1, info.quality, info.hyperlink, info.itemID, info.isBound
+            return info.iconFileID, info.stackCount or 1, info.quality, info.hyperlink, info.itemID, (WD.SlotBound and WD:SlotBound(bag, slot, info)) or info.isBound
         end
         return nil
     end

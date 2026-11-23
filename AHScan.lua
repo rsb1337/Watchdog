@@ -415,6 +415,158 @@ function WD:AHIndex()
 end
 
 ---------------------------------------------------------------------------
+-- Soulbound de verdade: itens "bind ao equipar" ficam soulbound depois de equipados
+---------------------------------------------------------------------------
+local boundCache = {}
+local scanTip
+local function TipBound(bag, slot)
+    local sb = _G.ITEM_SOULBOUND or "Soulbound"
+    if C_TooltipInfo and C_TooltipInfo.GetBagItem then
+        local d = C_TooltipInfo.GetBagItem(bag, slot)
+        if d and d.lines then
+            for _, ln in ipairs(d.lines) do
+                if ln.leftText == sb then return true end
+            end
+            return false
+        end
+    end
+    if not scanTip then
+        scanTip = CreateFrame("GameTooltip", "WatchdogScanTip", nil, "GameTooltipTemplate")
+        scanTip:SetOwner(UIParent, "ANCHOR_NONE")
+    end
+    scanTip:ClearLines()
+    scanTip:SetOwner(UIParent, "ANCHOR_NONE")
+    if not scanTip.SetBagItem then return false end
+    scanTip:SetBagItem(bag, slot)
+    for i = 1, (scanTip:NumLines() or 0) do
+        local fs = _G["WatchdogScanTipTextLeft" .. i]
+        if fs and fs:GetText() == sb then return true end
+    end
+    return false
+end
+function WD:SlotBound(bag, slot, info)
+    if not info then return false end
+    if info.isBound then return true end
+    local id = info.itemID
+    if not id then return false end
+    local bt = WD:ItemBind(id)
+    if bt ~= 2 and bt ~= 3 then return false end      -- so BoE/BoU podem "virar" soulbound
+    local key = bag .. ":" .. slot
+    local c = boundCache[key]
+    local now = GetTime()
+    if c and c.id == id and now - c.t < 5 then return c.v end
+    local ok, v = pcall(TipBound, bag, slot)
+    v = ok and v or false
+    boundCache[key] = { id = id, v = v, t = now }
+    return v
+end
+
+---------------------------------------------------------------------------
+-- Organizar a bolsa por cor: apagados -> AH -> vendor
+---------------------------------------------------------------------------
+local sorting = false
+local function SortCat(id, bound)
+    if WD:ItemDimmed(id, bound) then return 1 end
+    local _, _, sell = WD:GetItemDisplay(id)
+    local _, isA = WD:UnitValue(id, sell, bound)
+    if isA then return 2 end
+    return 3
+end
+local function SortMsg(m) print("|cffffd100Watchdog:|r " .. m) end
+
+function WD:SortBagsByColor()
+    if sorting then return end
+    local CC = C_Container
+    if not (CC and CC.GetContainerItemInfo and CC.PickupContainerItem) then SortMsg(L.sort_noapi); return end
+    if InCombatLockdown and InCombatLockdown() then SortMsg(L.sort_combat); return end
+    if GetCursorInfo and GetCursorInfo() then SortMsg(L.sort_cursor); return end
+    local slots, items = {}, {}
+    for bag = 0, (NUM_BAG_SLOTS or 4) do
+        local n = (CC.GetContainerNumSlots and CC.GetContainerNumSlots(bag)) or 0
+        local general = true
+        if bag > 0 and CC.GetContainerNumFreeSlots then
+            local _, btype = CC.GetContainerNumFreeSlots(bag)
+            general = (btype == 0 or btype == nil)
+        end
+        if general then
+            for slot = 1, n do slots[#slots + 1] = { bag, slot } end
+        end
+    end
+    for i, bs in ipairs(slots) do
+        local info = CC.GetContainerItemInfo(bs[1], bs[2])
+        if info and info.itemID then
+            local bound = WD:SlotBound(bs[1], bs[2], info)
+            items[#items + 1] = { idx = i, id = info.itemID, cat = SortCat(info.itemID, bound) }
+        end
+    end
+    if #items == 0 then return end
+    local order = {}
+    for i, it in ipairs(items) do order[i] = it end
+    table.sort(order, function(a, b)
+        if a.cat ~= b.cat then return a.cat < b.cat end
+        if a.id ~= b.id then return a.id < b.id end
+        return a.idx < b.idx
+    end)
+    -- simulacao: cur[pos] = item (por referencia) naquela posicao
+    local cur = {}
+    for _, it in ipairs(items) do cur[it.idx] = it end
+    local ops = {}
+    for pos = 1, #order do
+        local want = order[pos]
+        if cur[pos] ~= want then
+            local j
+            for q = 1, #slots do if cur[q] == want then j = q break end end
+            if j then
+                -- mesmo item (mesma id) no destino: nao troca (o jogo juntaria as pilhas)
+                if not (cur[pos] and cur[pos].id == want.id) then
+                    ops[#ops + 1] = { pos, j, want.id }
+                end
+                cur[pos], cur[j] = cur[j], cur[pos]
+            end
+        end
+    end
+    if #ops == 0 then SortMsg(L.sort_already); return end
+    sorting = true
+    local k, stage, tries = 1, 1, 0
+    local function abort(m) sorting = false; SortMsg(m) end
+    local function tick()
+        if not sorting then return end
+        if InCombatLockdown and InCombatLockdown() then abort(L.sort_combat); return end
+        local op = ops[k]
+        if not op then sorting = false; SortMsg(L.sort_done); WD:UpdateBagBorders(); return end
+        local a, b = slots[op[1]], slots[op[2]]
+        local ia = CC.GetContainerItemInfo(a[1], a[2])
+        local ib = CC.GetContainerItemInfo(b[1], b[2])
+        tries = tries + 1
+        if tries > 40 then abort(L.sort_stuck); return end
+        if stage == 1 then
+            if (ia and ia.isLocked) or (ib and ib.isLocked) then C_Timer.After(0.15, tick) return end
+            if GetCursorInfo and GetCursorInfo() then abort(L.sort_cursor); return end
+            CC.PickupContainerItem(b[1], b[2])        -- pega o item que vai para a posicao
+            stage = 2
+        elseif stage == 2 then
+            CC.PickupContainerItem(a[1], a[2])        -- solta na posicao (troca com o que estiver la)
+            stage = 3
+        elseif stage == 3 then
+            if GetCursorInfo and GetCursorInfo() then
+                CC.PickupContainerItem(b[1], b[2])    -- devolve o item deslocado ao lugar de origem
+            end
+            stage = 4
+        else
+            local chk = CC.GetContainerItemInfo(a[1], a[2])
+            if chk and chk.itemID == op[3] then
+                k, stage, tries = k + 1, 1, 0
+            elseif tries > 12 then
+                abort(L.sort_stuck); return
+            end
+        end
+        C_Timer.After(0.15, tick)
+    end
+    SortMsg(string.format(L.sort_start, #ops))
+    tick()
+end
+
+---------------------------------------------------------------------------
 -- Contornos coloridos: prata = vale mais no vendor, dourado = vale mais na AH
 ---------------------------------------------------------------------------
 WD.PALETTE = {
@@ -511,7 +663,8 @@ function WD:UpdateBagBorders()
             local bag = b.GetBagID and b:GetBagID() or (b:GetParent() and b:GetParent():GetID())
             local id = b.GetID and b:GetID()
             local info = C_Container and C_Container.GetContainerItemInfo and bag and id and C_Container.GetContainerItemInfo(bag, id)
-            local itemID, bound = info and info.itemID, info and info.isBound
+            local itemID = info and info.itemID
+            local bound = info and WD:SlotBound(bag, id, info)
             local icon = b.icon or b.Icon
             if icon and icon.SetAlpha then
                 if on and itemID and WD:ItemDimmed(itemID, bound) then
@@ -543,7 +696,7 @@ function WD:UpdateBagBorders()
     end
 end
 -- Botao liga/desliga preso na bolsa do jogo (acima da janela da bolsa que estiver aberta).
-local bagBtn
+local bagBtn, sortBtn
 local function FirstBagFrame()
     local c = _G.ContainerFrameCombinedBags
     if c and c:IsShown() then return c end
@@ -562,7 +715,7 @@ local function PaintBagBtn()
 end
 local function UpdateBagBtn()
     local fr = FirstBagFrame()
-    if not fr then if bagBtn then bagBtn:Hide() end return end
+    if not fr then if bagBtn then bagBtn:Hide() end if sortBtn then sortBtn:Hide() end return end
     if not bagBtn then
         bagBtn = CreateFrame("Button", "WatchdogBagBorderButton", UIParent)
         bagBtn:SetSize(24, 24)
@@ -585,6 +738,27 @@ local function UpdateBagBtn()
         end)
         bagBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end
+    if not sortBtn then
+        sortBtn = CreateFrame("Button", "WatchdogBagSortButton", UIParent)
+        sortBtn:SetSize(24, 24)
+        sortBtn:SetFrameStrata("HIGH")
+        sortBtn.icon = sortBtn:CreateTexture(nil, "ARTWORK")
+        sortBtn.icon:SetPoint("TOPLEFT", 2, -2); sortBtn.icon:SetPoint("BOTTOMRIGHT", -2, 2)
+        sortBtn.icon:SetTexture("Interface\\Icons\\INV_Misc_Bag_09")
+        sortBtn.hl = sortBtn:CreateTexture(nil, "HIGHLIGHT")
+        sortBtn.hl:SetAllPoints(); sortBtn.hl:SetColorTexture(1, 1, 1, 0.2)
+        sortBtn:SetScript("OnClick", function() WD:SortBagsByColor() end)
+        sortBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText("Watchdog: " .. L.sort_btn)
+            GameTooltip:AddLine(L.sort_btn_tip, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        sortBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+    sortBtn:ClearAllPoints()
+    sortBtn:SetPoint("RIGHT", bagBtn, "LEFT", -4, 0)
+    sortBtn:Show()
     if bagBtn._anchor ~= fr then
         bagBtn:ClearAllPoints()
         bagBtn:SetPoint("BOTTOMRIGHT", fr, "TOPRIGHT", -4, 2)
