@@ -288,6 +288,16 @@ function WD:StartAHScan()
         if not scanning or token ~= evToken or processing then return end
         local waited = math.floor(GetTime() - scanStart)
         if waited >= 90 then Fail(L.ah_timeout); return end
+        if waited >= 15 and not WD._replicating then
+            -- a AH limita novos pedidos: usa a lista que o jogo ja tem em memoria, se houver
+            local n = A.GetNumReplicateItems and A.GetNumReplicateItems() or 0
+            if n > 0 then
+                Dlog("sem resposta em " .. waited .. "s; usando a lista em memoria (" .. n .. ")")
+                print("|cffffd100Watchdog:|r " .. L.ah_cached)
+                Process()
+                return
+            end
+        end
         if not WD._replicating then
             Paint("wait", 0, string.format(L.ah_waiting_s, waited), { 1, 0.85, 0.3 })
         end

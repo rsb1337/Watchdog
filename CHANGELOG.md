@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.10
+
+### Corrigido
+- Scan da AH: quando a casa de leiloes nao envia uma lista nova (ela limita a frequencia dos scans), o addon agora le a lista que o jogo ja tinha em memoria apos 15s, em vez de falhar so no fim dos 90s.
+- Mensagem de erro de "sem resposta" encurtada para caber no painel sem ser cortada.
+
 ## 1.7.9
 
 ### Alterado
