@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.0
+
+Versao de consolidacao (sem mudancas de codigo alem do numero). Reune as novidades da serie 1.6.x:
+- Black list com macro "WD Alvo" (um mob por vez, botao "+M") e alerta por mob ("A+").
+- Ouro: coletado / leilao / provavel; tela de sessoes e historico reorganizadas.
+- Avisos de consumiveis com icone proprio por item, Sap em um unico alvo, icones de CC na plaquinha.
+
 ## 1.6.26
 
 ### Novo
