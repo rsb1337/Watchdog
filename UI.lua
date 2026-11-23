@@ -1725,22 +1725,29 @@ local function CreateMainFrame()
     ui.sortBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, -106)
     -- Lista de opcoes: abre ao clicar, escolhe-se direto (sem trocar no escuro)
     local sp = CreateFrame("Frame", nil, f, BT)
-    sp:SetFrameStrata("FULLSCREEN_DIALOG")
+    sp:SetFrameLevel((tonumber(f:GetFrameLevel()) or 10) + 60)     -- acima do resto da janela, mesma camada (sem camada especial)
     sp:SetSize(150, #SORTS * 26 + 8)
     sp:SetPoint("TOPRIGHT", ui.sortBtn, "BOTTOMRIGHT", 0, -2)
     Flat(sp, C.bg, C.border, 1)
+    sp:EnableMouse(true)
     sp:Hide()
-    local catcher = CreateFrame("Button", nil, UIParent)
-    catcher:SetAllPoints(UIParent)
-    catcher:SetFrameStrata("FULLSCREEN")
-    catcher:Hide()
-    catcher:SetScript("OnClick", function() sp:Hide() end)
-    sp:SetScript("OnShow", function() catcher:Show() end)
-    sp:SetScript("OnHide", function() catcher:Hide() end)
     ui.sortPop = sp
+    -- fecha sozinha quando o mouse sai da lista (e do botao Sort) por um instante
+    local away = 0
+    sp:SetScript("OnUpdate", function(self, el)
+        if MouseIsOver(self) or MouseIsOver(ui.sortBtn) then away = 0
+        else
+            away = away + el
+            if away > 0.5 then self:Hide() end
+        end
+    end)
+    sp:SetScript("OnShow", function() away = 0 end)
     local opts = {}
     for i, s in ipairs(SORTS) do
         local o = CreateFrame("Button", nil, sp, BT)
+        o:SetFrameLevel((tonumber(sp:GetFrameLevel()) or 70) + 2)
+        o:EnableMouse(true)
+        o:RegisterForClicks("LeftButtonUp")
         o:SetSize(142, 24)
         o:SetPoint("TOPLEFT", 4, -4 - (i - 1) * 26)
         o.text = FS(o, 12, C.dim, "LEFT")
@@ -1750,12 +1757,15 @@ local function CreateMainFrame()
         o:SetScript("OnLeave", function(self)
             if state.sort == s.key then Flat(self, C.tile, C.red, 1) else Flat(self, C.bg, C.bg, 0) end
         end)
-        o:SetScript("OnClick", function()
+        local function Pick()
+            if state.sort == s.key and not sp:IsShown() then return end
             state.sort = s.key
             sp:Hide()
             ui.scroll:SetVerticalScroll(0)
             WD:Render()
-        end)
+        end
+        o:SetScript("OnClick", Pick)
+        o:SetScript("OnMouseUp", Pick)      -- reserva: garante o clique mesmo que o OnClick nao dispare
         opts[i] = o
     end
     local function PaintPop()

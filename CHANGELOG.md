@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.3
+
+### Corrigido
+- Lista do botao Sort (PvE): as opcoes eram mostradas mas nao respondiam ao clique. A lista foi refeita sem camada especial nem fundo de captura: fica sobre a janela, aceita o clique em cada opcao e fecha sozinha quando o mouse sai dela.
+
 ## 1.8.2
 
 ### Corrigido
