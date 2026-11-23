@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.2
+
+### Novo
+- Nova aba "Atalhos" no menu lateral: botoes para o que antes era so comando. Barras (ouro/hora, XP/hora, ouro da sessao, valor do inventario) e icone do minimapa com marcacao verde ON/OFF; botoes para abrir Relatorio, Lista de comandos, Configuracoes, Nova sessao, Alcance das plaquinhas e Guia de boas-vindas.
+
 ## 1.7.1
 
 ### Novo

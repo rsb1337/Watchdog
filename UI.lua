@@ -41,6 +41,7 @@ local TABS = {
     { key = "pvp",    titleK = "title_pvp" },
     { key = "alerts", titleK = "title_alerts" },
     { key = "black",  titleK = "title_black" },
+    { key = "buttons", titleK = "title_buttons" },
 }
 -- Menu lateral: grupos. O grupo PvE tem sub-menu (mobs / EXP / inventario / historico).
 local GROUPS = {
@@ -48,6 +49,7 @@ local GROUPS = {
     { key = "pvp",    labelK = "tab_pvp" },
     { key = "alerts", labelK = "tab_alerts" },
     { key = "black",  labelK = "tab_black" },
+    { key = "buttons", labelK = "tab_buttons" },
 }
 local PVE_SUBS = {
     { key = "pve",  labelK = "sub_mobs" },
@@ -86,6 +88,7 @@ local state = { tab = "pve", period = "session", mob = nil, sort = "kills", invV
 local frame
 local ui = {}
 local BuildBlackPanel -- definido mais abaixo (usado por WD:Render)
+local BuildButtonsPanel -- idem
 local rows = {}
 local tiles = {}
 local slots = {}
@@ -877,10 +880,11 @@ function WD:Render()
     local showSlots = false
     contentH = 1
 
-    local isPanel = (state.tab == "alerts" or state.tab == "black")
+    local isPanel = (state.tab == "alerts" or state.tab == "black" or state.tab == "buttons")
     ui.foot:SetShown(not isPanel)
     if ui.cfgHost then ui.cfgHost:SetShown(state.tab == "alerts") end
     if ui.blackHost then ui.blackHost:SetShown(state.tab == "black") end
+    if ui.buttonsHost then ui.buttonsHost:SetShown(state.tab == "buttons") end
     if state.tab == "alerts" then
         if not ui.cfgHost and WD.CreateConfigPanel then ui.cfgHost = WD:CreateConfigPanel(frame, SIDE_W + PAD) end
         ui.scroll:Hide(); ui.back:Hide(); ui.info:Hide()
@@ -898,6 +902,11 @@ function WD:Render()
         ui.scroll:Hide(); ui.back:Hide(); ui.info:Hide()
         ui.blackHost:Show()
         ui.summary:SetText(White(#WD:WatchList("pve")) .. Gray(" PvE  ·  ") .. White(#WD:WatchList("pvp")) .. Gray(" PvP"))
+    elseif state.tab == "buttons" then
+        if not ui.buttonsHost then ui.buttonsHost = BuildButtonsPanel(frame) end
+        ui.scroll:Hide(); ui.back:Hide(); ui.info:Hide()
+        ui.buttonsHost:Show()
+        ui.summary:SetText(Gray(L.btn_summary))
     elseif state.tab == "pve" then
         ui.info:Hide()
         ui.scroll:Show()
@@ -1905,6 +1914,109 @@ local function ToggleBar(key)
     f:SetShown(not f:IsShown())
     SaveBarState(key, f)
     print("|cffffd100Watchdog:|r " .. string.format(L.bar_toggle, L[BAR_DEFS[key].nameK], f:IsShown() and L.on_word or L.off_word))
+end
+
+---------------------------------------------------------------------------
+-- Aba ATALHOS: tudo que existe como /wd ... vira botao (liga/desliga com marcacao)
+---------------------------------------------------------------------------
+function BuildButtonsPanel(host)
+    local left = SIDE_W + PAD
+    local p = CreateFrame("Frame", nil, host)
+    p:SetPoint("TOPLEFT", host, "TOPLEFT", left, -76)
+    p:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -PAD, PAD)
+    p:Hide()
+
+    local colW = math.floor((CONTENT_W - 10) / 2)
+    local refreshers = {}
+    local y = 0
+
+    local function Section(text)
+        local s = FS(p, 11, C.dim, "LEFT")
+        s:SetPoint("TOPLEFT", p, "TOPLEFT", 2, -y)
+        s:SetText(text)
+        y = y + 20
+    end
+
+    -- Botao com marcacao: indicador verde + "ON" quando ligado; apagado + "OFF" quando desligado.
+    local function Card(col, row0, label, getOn, onClick, isAction)
+        local b = CreateFrame("Button", nil, p, BT)
+        b:SetSize(colW, 34)
+        b:SetPoint("TOPLEFT", p, "TOPLEFT", col * (colW + 10), -(row0))
+        Flat(b, C.card, C.border, 0.9)
+        local dot = b:CreateTexture(nil, "ARTWORK")
+        dot:SetSize(8, 8)
+        dot:SetPoint("LEFT", 10, 0)
+        local lab = FS(b, 12, C.text, "LEFT")
+        lab:SetPoint("LEFT", 26, 0)
+        lab:SetText(label)
+        local st = FS(b, 11, C.mute, "RIGHT")
+        st:SetPoint("RIGHT", -10, 0)
+        local function paint()
+            if isAction then
+                dot:SetColorTexture(C.mute[1], C.mute[2], C.mute[3], 0.5)
+                st:SetText(">")
+                return
+            end
+            local on = getOn() and true or false
+            if on then
+                Flat(b, C.tile, C.green, 1)
+                dot:SetColorTexture(C.green[1], C.green[2], C.green[3], 1)
+                st:SetText(L.cfg_on); st:SetTextColor(C.green[1], C.green[2], C.green[3])
+            else
+                Flat(b, C.card, C.border, 0.9)
+                dot:SetColorTexture(C.mute[1], C.mute[2], C.mute[3], 0.45)
+                st:SetText(L.cfg_off); st:SetTextColor(C.mute[1], C.mute[2], C.mute[3])
+            end
+        end
+        b:SetScript("OnClick", function() onClick(); paint() end)
+        refreshers[#refreshers + 1] = paint
+        paint()
+        return b
+    end
+
+    local function Grid(items)
+        local row0 = y
+        for i, it in ipairs(items) do
+            local col = (i - 1) % 2
+            if col == 0 and i > 1 then row0 = row0 + 40 end
+            Card(col, row0, it.label, it.on, it.click, it.action)
+        end
+        y = row0 + 44
+    end
+
+    local function BarOn(key) return function() return bars[key] and bars[key]:IsShown() end end
+    local function BarGo(key) return function() ToggleBar(key) end end
+
+    Section(L.btn_sec_toggle)
+    Grid({
+        { label = L[BAR_DEFS.gold.nameK], on = BarOn("gold"), click = BarGo("gold") },
+        { label = L[BAR_DEFS.exp.nameK], on = BarOn("exp"), click = BarGo("exp") },
+        { label = L[BAR_DEFS.sgold.nameK], on = BarOn("sgold"), click = BarGo("sgold") },
+        { label = L[BAR_DEFS.igold.nameK], on = BarOn("igold"), click = BarGo("igold") },
+        { label = L.btn_minimap, on = function() return not WatchdogDB.hideMinimap end,
+          click = function()
+              WatchdogDB.hideMinimap = not WatchdogDB.hideMinimap
+              if ui.minimap then ui.minimap:SetShown(not WatchdogDB.hideMinimap) end
+          end },
+    })
+    y = y + 6
+    Section(L.btn_sec_open)
+    Grid({
+        { label = L.btn_report, action = true, click = function() WD:ShowReport() end },
+        { label = L.btn_commands, action = true, click = function() if WD.ToggleCommands then WD:ToggleCommands() end end },
+        { label = L.btn_config, action = true, click = function() if WD.ToggleConfig then WD:ToggleConfig() end end },
+        { label = L.btn_newsession, action = true, click = function() WD:StartNewSession() end },
+        { label = L.btn_nameplates, action = true, click = function() WD:MaxNameplateRange(); print("|cffffd100Watchdog:|r " .. L.msg_nameplates) end },
+        { label = L.btn_wizard, action = true, click = function() if WD.ShowWizard then WD:ShowWizard(true) end end },
+    })
+
+    local acc = 0
+    p:SetScript("OnUpdate", function(_, el)
+        acc = acc + el
+        if acc >= 0.5 then acc = 0; for _, fn in ipairs(refreshers) do fn() end end
+    end)
+    p:SetScript("OnShow", function() for _, fn in ipairs(refreshers) do fn() end end)
+    return p
 end
 
 local function RestoreBars()
