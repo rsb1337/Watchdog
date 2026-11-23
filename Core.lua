@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.6.25"
+WD.version = "1.6.26"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -1250,6 +1250,7 @@ function WD:RemoveWatch(name, kind)
     if name == "" or not t then return end
     t[name:lower()] = nil
     if WatchdogDB and WatchdogDB.macroNames then WatchdogDB.macroNames[name:lower()] = nil end
+    if WatchdogDB and WatchdogDB.alertNames then WatchdogDB.alertNames[name:lower()] = nil end
     if WD.RefreshNameplates then WD:RefreshNameplates() end
     WD:UpdateTargetMacro()
 end
@@ -1377,6 +1378,31 @@ local function CheckRare(unit)
         local text = string.format(L.alert_rare_body, name, (lvl and lvl > 0) and lvl or "??")
         WD:Alert("rare", L.alert_rare, text, nil)
     end
+end
+
+-- Alerta de mob da Black list marcado com "A+": avisa como mob raro, uma vez por mob (por guid).
+function WD:InAlert(name)
+    local t = WatchdogDB and WatchdogDB.alertNames
+    return t and t[name:lower()] and true or false
+end
+function WD:ToggleAlertName(name)
+    WatchdogDB.alertNames = WatchdogDB.alertNames or {}
+    local k = name:lower()
+    WatchdogDB.alertNames[k] = (not WatchdogDB.alertNames[k]) or nil
+end
+local function CheckWatchAlert(unit)
+    if not unit or not UnitExists(unit) or UnitIsDead(unit) then return end
+    local t = WatchdogDB.alertNames
+    if not t or not next(t) then return end
+    local guid, name = Clean(UnitGUID(unit)), Clean(UnitName(unit))
+    if type(guid) ~= "string" or type(name) ~= "string" then return end
+    if not t[name:lower()] then return end
+    if not WD:IsUnitWatched(unit) then return end
+    local key = "A" .. guid
+    if rareSeen[key] then return end
+    rareSeen[key] = GetTime()
+    local lvl = UnitLevel(unit)
+    WD:Alert("rare", L.alert_mob, string.format(L.alert_rare_body, name, (lvl and lvl > 0) and lvl or "??"), nil)
 end
 
 local function Prune()
@@ -1530,10 +1556,12 @@ ev:SetScript("OnEvent", function(_, event, ...)
         WD:RememberSeen("target")
         pcall(RememberCorpse, "target")
         pcall(CheckRare, "target")
+        pcall(CheckWatchAlert, "target")
     elseif event == "UPDATE_MOUSEOVER_UNIT" then
         WD:RememberSeen("mouseover")
         pcall(RememberCorpse, "mouseover")
         pcall(CheckRare, "mouseover")
+        pcall(CheckWatchAlert, "mouseover")
     elseif event == "PLAYER_MONEY" then
         pcall(OnPlayerMoney)
     elseif event == "BANKFRAME_OPENED" then
@@ -1566,6 +1594,7 @@ ev:SetScript("OnEvent", function(_, event, ...)
     elseif event == "NAME_PLATE_UNIT_ADDED" then
         WD:RememberSeen(arg1)
         pcall(CheckRare, arg1)
+        pcall(CheckWatchAlert, arg1)
         if WD.OnNameplateAdded then WD:OnNameplateAdded(arg1) end
     elseif event == "BAG_UPDATE_DELAYED" or event == "BAG_UPDATE" then
         if event == "BAG_UPDATE_DELAYED" then WD:QueueBagValue() end

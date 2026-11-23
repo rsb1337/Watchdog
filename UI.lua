@@ -1319,7 +1319,7 @@ function BuildBlackPanel(host)
             row:SetPoint("TOPRIGHT", -8, -182 - (r - 1) * 20)
             row.label = FS(row, 12, accent, "LEFT")
             row.label:SetPoint("LEFT", 6, 0)
-            row.label:SetPoint("RIGHT", -52, 0)
+            row.label:SetPoint("RIGHT", -80, 0)
             row.label:SetWordWrap(false)
             local x = CreateFrame("Button", nil, row)
             x:SetSize(20, 20)
@@ -1345,6 +1345,19 @@ function BuildBlackPanel(host)
                 if row.name then WD:ToggleMacroName(row.name); if WD.RefreshBlack then WD:RefreshBlack() end end
             end)
             row.m = m
+            local am = CreateFrame("Button", nil, row)
+            am:SetSize(28, 20)
+            am:SetPoint("RIGHT", m, "LEFT", -2, 0)
+            am.text = FS(am, 11, C.mute, "CENTER")
+            am.text:SetPoint("CENTER", 0, 0)
+            am:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:SetText(L.black_alert_tip); GameTooltip:Show()
+            end)
+            am:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            am:SetScript("OnClick", function()
+                if row.name then WD:ToggleAlertName(row.name); if WD.RefreshBlack then WD:RefreshBlack() end end
+            end)
+            row.a = am
             row:Hide()
             col.rows[r] = row
         end
@@ -1372,6 +1385,10 @@ function BuildBlackPanel(host)
                     row.m.text:SetText(on and "M" or "+M")
                     local c = on and C.green or C.mute
                     row.m.text:SetTextColor(c[1], c[2], c[3])
+                    local aon = WD:InAlert(name)
+                    row.a.text:SetText(aon and "A" or "A+")
+                    local ac = aon and C.gold or C.mute
+                    row.a.text:SetTextColor(ac[1], ac[2], ac[3])
                 else row.name = nil; row:Hide() end
             end
             col.empty:SetShown(#list == 0)

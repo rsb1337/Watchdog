@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.26
+
+### Novo
+- Black list: botao "A+" ao lado do "+M" em cada nome. Com "A" ligado, o mob da lista dispara um aviso (como mob raro) quando aparece por perto, uma vez por mob. Pode marcar varios.
+
 ## 1.6.25
 
 ### Alterado

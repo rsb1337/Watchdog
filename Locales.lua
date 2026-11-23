@@ -176,7 +176,7 @@ WD:RegisterLocale("enUS", {
     -- alertas (toasts)
     alert_rarekill = "Rare mob slain",
     alert_drop = "Rare drop!",
-    alert_rare = "Rare mob spotted!",
+    alert_rare = "Rare mob spotted!", alert_mob = "Watched mob spotted!", black_alert_tip = "Alert when this mob shows up (like a rare)",
     alert_rare_body = "%s (level %s)",
     -- avisos / feedback de comando
     msg_new_session = "new session started.",
@@ -341,7 +341,7 @@ WD:RegisterLocale("ptBR", {
     q_rare = "raro", q_epic = "épico", q_legendary = "lendário",
     alert_rarekill = "Mob raro abatido",
     alert_drop = "Drop raro!",
-    alert_rare = "Mob raro avistado!",
+    alert_rare = "Mob raro avistado!", alert_mob = "Mob da lista avistado!", black_alert_tip = "Avisar quando esse mob aparecer (como um raro)",
     alert_rare_body = "%s (nível %s)",
     msg_new_session = "nova sessão iniciada.",
     msg_nameplates = "nomes de inimigos ligados e alcance das plaquinhas no máximo.",
