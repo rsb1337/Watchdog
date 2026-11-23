@@ -57,8 +57,10 @@ end
 
 local function BuildPanel()
     if panel then return panel end
+    local K = WD.UIKit
+    local C = K.C
     panel = CreateFrame("Frame", "WatchdogScanPanel", UIParent, "BackdropTemplate")
-    panel:SetSize(300, 54)
+    panel:SetSize(340, 64)
     panel:SetFrameStrata("DIALOG")
     panel:SetClampedToScreen(true)
     panel:SetMovable(true)
@@ -66,30 +68,56 @@ local function BuildPanel()
     panel:RegisterForDrag("LeftButton")
     panel:SetScript("OnDragStart", function(self) self:StartMoving() end)
     panel:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
-    if panel.SetBackdrop then
-        panel:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-        panel:SetBackdropColor(0.05, 0.06, 0.08, 0.95)
-        panel:SetBackdropBorderColor(0.3, 0.32, 0.38, 1)
+    K.Flat(panel, C.bg, C.border, 0.97)
+
+    -- faixa vermelha no topo (assinatura do Watchdog)
+    local accent = panel:CreateTexture(nil, "OVERLAY")
+    accent:SetColorTexture(C.red[1], C.red[2], C.red[3], 1)
+    accent:SetPoint("TOPLEFT", 1, -1); accent:SetPoint("TOPRIGHT", -1, -1); accent:SetHeight(2)
+
+    local icon = panel:CreateTexture(nil, "ARTWORK")
+    icon:SetTexture(K.MEDIA .. "emblem_icon")
+    icon:SetSize(20, 20)
+    icon:SetPoint("TOPLEFT", 10, -9)
+    local title = K.FS(panel, 12, C.text, "LEFT", "OUTLINE")
+    title:SetPoint("LEFT", icon, "RIGHT", 7, 0)
+    title:SetText("WATCHDOG  |cff9ea3afAH SCAN|r")
+
+    -- botao no estilo do addon (plano, borda vermelha), nao o botao padrao do WoW
+    local btn = CreateFrame("Button", "WatchdogAHScanButton", panel, "BackdropTemplate")
+    btn:SetSize(86, 22)
+    btn:SetPoint("TOPRIGHT", -10, -8)
+    K.Flat(btn, C.tile, C.red, 1)
+    btn.label = K.FS(btn, 11, C.text, "CENTER", "OUTLINE")
+    btn.label:SetPoint("CENTER", 0, 0)
+    btn.label:SetText(L.ah_btn_scan_short or "SCAN")
+    btn.enabled = true
+    btn.SetEnabled = function(self, on)
+        self.enabled = on and true or false
+        if on then
+            K.Flat(self, C.tile, C.red, 1); self.label:SetTextColor(C.text[1], C.text[2], C.text[3])
+        else
+            K.Flat(self, C.card, C.border, 1); self.label:SetTextColor(C.mute[1], C.mute[2], C.mute[3])
+        end
     end
-    local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    title:SetPoint("TOPLEFT", 8, -6)
-    title:SetText("|cff4fd1c5Watchdog|r " .. (L.ah_panel_title or "AH scan"))
-    panel.btn = CreateFrame("Button", "WatchdogAHScanButton", panel, "UIPanelButtonTemplate")
-    panel.btn:SetSize(96, 20)
-    panel.btn:SetPoint("TOPRIGHT", -6, -4)
-    panel.btn:SetText(L.ah_btn_scan)
-    panel.btn:SetScript("OnClick", function() WD:StartAHScan() end)
-    panel.text = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    panel.text:SetPoint("TOPLEFT", 8, -24)
-    panel.text:SetPoint("TOPRIGHT", -8, -24)
-    panel.text:SetJustifyH("LEFT")
+    btn:SetScript("OnEnter", function(self) if self.enabled then K.Flat(self, C.border, C.red, 1) end end)
+    btn:SetScript("OnLeave", function(self) if self.enabled then K.Flat(self, C.tile, C.red, 1) end end)
+    btn:SetScript("OnClick", function(self) if self.enabled then WD:StartAHScan() end end)
+    panel.btn = btn
+
+    panel.text = K.FS(panel, 11, C.dim, "LEFT")
+    panel.text:SetPoint("TOPLEFT", 10, -34)
+    panel.text:SetPoint("RIGHT", panel, "RIGHT", -10, 0)
+    panel.text:SetWordWrap(false)
+    panel.text:SetHeight(14)
+
     panel.bar = CreateFrame("StatusBar", nil, panel)
-    panel.bar:SetPoint("BOTTOMLEFT", 6, 6)
-    panel.bar:SetPoint("BOTTOMRIGHT", -6, 6)
-    panel.bar:SetHeight(8)
+    panel.bar:SetPoint("BOTTOMLEFT", 10, 8)
+    panel.bar:SetPoint("BOTTOMRIGHT", -10, 8)
+    panel.bar:SetHeight(4)
     panel.bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
     local bg = panel.bar:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints(); bg:SetColorTexture(0.15, 0.16, 0.2, 1)
+    bg:SetAllPoints(); bg:SetColorTexture(C.tile[1], C.tile[2], C.tile[3], 1)
     panel:Hide()
     return panel
 end

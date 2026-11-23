@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.9
+
+### Alterado
+- Painel do scan da AH redesenhado no estilo Watchdog: fundo e bordas do addon, faixa vermelha, emblema, titulo "WATCHDOG AH SCAN", botao SCAN plano com borda vermelha (no lugar do botao padrao do WoW), texto de status em linha propria sem invadir o botao e barra de progresso fina.
+
 ## 1.7.8
 
 ### Corrigido
