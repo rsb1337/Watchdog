@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.1
+
+### Novo
+- Aba PvE > Mobs: nova ordenacao "Latest kills" (ultimos mortos de cima para baixo: o mob que voce matou por ultimo fica no topo).
+- O botao Sort agora abre uma lista com todas as opcoes (Kills, Value, $/kill, Drop %, Latest kills); basta clicar na que quiser, em vez de trocar uma a uma sem saber a proxima. A opcao atual fica marcada e a lista fecha ao escolher ou clicar fora.
+- Os mobs passam a guardar o horario do ultimo abate (mobs mortos antes desta versao aparecem no fim da lista "Latest kills" ate serem mortos de novo).
+
 ## 1.8.0
 
 ### Novo

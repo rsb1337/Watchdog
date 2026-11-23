@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.8.0"
+WD.version = "1.8.1"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -445,6 +445,7 @@ local function MergeInto(out, b)
     for name, m in pairs(b.mobs) do
         local o = GetMob(out, name)
         o.kills = o.kills + (m.kills or 0)
+        if (m.last or 0) > (o.last or 0) then o.last = m.last end
         o.money = (o.money or 0) + (m.money or 0)
         o.hit = (o.hit or 0) + (m.hit or 0)
         for id, q in pairs(m.loot) do
@@ -1047,11 +1048,14 @@ local function AddPending(tbl, name)
     list[#list + 1] = GetTime()
 end
 
+local killSeq = 0
 local function CountMobKill(name)
     WD:MarkActive()
     Each(function(b)
         local m = GetMob(b, name)
         m.kills = m.kills + 1
+        killSeq = killSeq + 1
+        m.last = time() + (killSeq % 1000) / 1000   -- ordem exata dos ultimos abates
     end)
     recentKills[#recentKills + 1] = { name = name, t = GetTime() }
     if #recentKills > 60 then table.remove(recentKills, 1) end

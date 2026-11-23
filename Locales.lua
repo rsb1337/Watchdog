@@ -64,7 +64,7 @@ WD:RegisterLocale("enUS", {
     title_inv = "Inventory", title_hist = "Session history",
     -- ordenação / visões
     sort_kills = "Sort: Kills", sort_value = "Sort: Value",
-    sort_perkill = "Sort: $/kill", sort_hit = "Sort: Drop %",
+    sort_perkill = "Sort: $/kill", sort_hit = "Sort: Drop %", sort_recent = "Sort: Latest kills",
     inv_bag = "Bag", inv_list = "List",
     -- tiles
     t_kills = "KILLS", t_deaths = "DEATHS", t_honor = "HONOR GAINED",
@@ -263,7 +263,7 @@ WD:RegisterLocale("ptBR", {
     title_pve = "PvE", title_pvp = "PvP", title_xp = "Experiência",
     title_inv = "Inventário", title_hist = "Histórico de sessões",
     sort_kills = "Ordem: Kills", sort_value = "Ordem: Valor",
-    sort_perkill = "Ordem: $/kill", sort_hit = "Ordem: Drop %",
+    sort_perkill = "Ordem: $/kill", sort_hit = "Ordem: Drop %", sort_recent = "Ordem: Últimos mortos",
     inv_bag = "Bolsa", inv_list = "Lista",
     t_kills = "KILLS", t_deaths = "MORTES", t_honor = "HONRA GANHA",
     t_xp_period = "XP NO PERÍODO", t_xp_hour = "XP POR HORA",

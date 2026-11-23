@@ -69,6 +69,7 @@ local SORTS = {
     { key = "value",   labelK = "sort_value" },
     { key = "perkill", labelK = "sort_perkill" },
     { key = "hit",     labelK = "sort_hit" },
+    { key = "recent",  labelK = "sort_recent" },
 }
 
 local INV_VIEWS = {
@@ -579,12 +580,13 @@ local function RenderPvE(data)
                 name = name, m = m, kills = m.kills or 0, value = v,
                 per = (m.kills or 0) > 0 and (v / m.kills) or 0,
                 hit = (m.kills or 0) > 0 and math.min(1, (m.hit or 0) / m.kills) or 0,
+                last = m.last or 0,
             }
             -- Ranking por drop % so conta mobs com amostra minima (>= 5 kills).
             entries[#entries].hitr = (m.kills or 0) >= 5 and entries[#entries].hit or 0
         end
         local metric = state.sort == "value" and "value" or (state.sort == "perkill" and "per")
-            or (state.sort == "hit" and "hitr") or "kills"
+            or (state.sort == "hit" and "hitr") or (state.sort == "recent" and "last") or "kills"
         table.sort(entries, function(a, b)
             if a[metric] ~= b[metric] then return a[metric] > b[metric] end
             if metric == "hitr" and a.per ~= b.per then return a.per > b.per end
@@ -594,6 +596,10 @@ local function RenderPvE(data)
 
         ui.summary:SetText(PeriodLabel() .. "  ·  " .. White(Num(total)) .. L.kills_word)
         local top = entries[1] and entries[1][metric] or 0
+        if metric == "last" then    -- na ordem por recencia a barra mostra o valor, nao o horario
+            top = 0
+            for _, e in ipairs(entries) do if e.value > top then top = e.value end end
+        end
         if top <= 0 then top = 1 end
         for _, e in ipairs(entries) do
             n = n + 1
@@ -618,7 +624,7 @@ local function RenderPvE(data)
                     WD:Render()
                 end,
                 hint = L.click_drops,
-                pct = e[metric] / top,
+                pct = (metric == "last" and e.value or e[metric]) / top,
             })
         end
         if n == 0 then
@@ -1717,15 +1723,53 @@ local function CreateMainFrame()
     -- Ordenacao da lista de mobs (PvE)
     ui.sortBtn = MakeChip(f, L[SORTS[1].labelK], 104)
     ui.sortBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, -106)
-    ui.sortBtn:SetScript("OnClick", function()
+    -- Lista de opcoes: abre ao clicar, escolhe-se direto (sem trocar no escuro)
+    local sp = CreateFrame("Frame", nil, f, BT)
+    sp:SetFrameStrata("FULLSCREEN_DIALOG")
+    sp:SetSize(150, #SORTS * 26 + 8)
+    sp:SetPoint("TOPRIGHT", ui.sortBtn, "BOTTOMRIGHT", 0, -2)
+    Flat(sp, C.bg, C.border, 1)
+    sp:Hide()
+    local catcher = CreateFrame("Button", nil, UIParent)
+    catcher:SetAllPoints(UIParent)
+    catcher:SetFrameStrata("FULLSCREEN")
+    catcher:Hide()
+    catcher:SetScript("OnClick", function() sp:Hide() end)
+    sp:SetScript("OnShow", function() catcher:Show() end)
+    sp:SetScript("OnHide", function() catcher:Hide() end)
+    ui.sortPop = sp
+    local opts = {}
+    for i, s in ipairs(SORTS) do
+        local o = CreateFrame("Button", nil, sp, BT)
+        o:SetSize(142, 24)
+        o:SetPoint("TOPLEFT", 4, -4 - (i - 1) * 26)
+        o.text = FS(o, 12, C.dim, "LEFT")
+        o.text:SetPoint("LEFT", 10, 0)
+        o.text:SetText((L[s.labelK] or s.key):gsub("^[^:]+:%s*", ""))
+        o:SetScript("OnEnter", function(self) Flat(self, C.tile, C.border, 1) end)
+        o:SetScript("OnLeave", function(self)
+            if state.sort == s.key then Flat(self, C.tile, C.red, 1) else Flat(self, C.bg, C.bg, 0) end
+        end)
+        o:SetScript("OnClick", function()
+            state.sort = s.key
+            sp:Hide()
+            ui.scroll:SetVerticalScroll(0)
+            WD:Render()
+        end)
+        opts[i] = o
+    end
+    local function PaintPop()
         for i, s in ipairs(SORTS) do
-            if s.key == state.sort then
-                state.sort = SORTS[i % #SORTS + 1].key
-                break
+            local o = opts[i]
+            if state.sort == s.key then
+                Flat(o, C.tile, C.red, 1); o.text:SetTextColor(1, 1, 1)
+            else
+                Flat(o, C.bg, C.bg, 0); o.text:SetTextColor(C.dim[1], C.dim[2], C.dim[3])
             end
         end
-        ui.scroll:SetVerticalScroll(0)
-        WD:Render()
+    end
+    ui.sortBtn:SetScript("OnClick", function()
+        if sp:IsShown() then sp:Hide() else PaintPop(); sp:Show() end
     end)
 
     -- Lista / bolsa com rolagem (sem barra: use a roda do mouse).
