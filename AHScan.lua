@@ -370,12 +370,50 @@ local function TipCoin(c)
     return out .. cp .. ic("Copper")
 end
 
+-- Quantidade do item sob o mouse (pilha na bolsa/banco); 1 se nao der pra saber.
+local function StackCount(itemID)
+    local ok, n = pcall(function()
+        local f = (GetMouseFoci and GetMouseFoci()[1]) or (GetMouseFocus and GetMouseFocus())
+        if not f or not (C_Container and C_Container.GetContainerItemInfo) then return 1 end
+        local bag = f.GetBagID and f:GetBagID()
+        if not bag and f.GetParent then
+            local p = f:GetParent()
+            bag = p and p.GetID and p:GetID()
+        end
+        local slot = f.GetID and f:GetID()
+        if not (bag and slot) then return 1 end
+        local info = C_Container.GetContainerItemInfo(bag, slot)
+        if info and info.itemID == itemID then return tonumber(info.stackCount) or 1 end
+        return 1
+    end)
+    return ok and tonumber(n) or 1
+end
+
+-- Segurar/soltar o Shift refaz o tooltip (pilha <-> unidade) sem precisar mexer o mouse.
+local shiftFrame = CreateFrame("Frame")
+pcall(shiftFrame.RegisterEvent, shiftFrame, "MODIFIER_STATE_CHANGED")
+shiftFrame:SetScript("OnEvent", function(_, _, key)
+    if key and not tostring(key):find("SHIFT") then return end
+    local tt = GameTooltip
+    if not (tt and tt.IsShown and tt:IsShown() and tt.GetOwner) then return end
+    local o = tt:GetOwner()
+    local h = o and o.GetScript and o:GetScript("OnEnter")
+    if h then pcall(h, o) end
+end)
+
 local function AddTag(tt, itemID)
     if not itemID or not tt or not tt.AddDoubleLine then return end
     local p = WD:AHPrice(itemID)
     if not p then return end
-    local coin = TipCoin(math.floor(p))
-    tt:AddDoubleLine("|cff4fd1c5Watchdog AH|r", coin .. AgeText(), 1, 1, 1, 1, 1, 1)
+    local label, price = "|cff4fd1c5Watchdog AH|r", math.floor(p)
+    if IsShiftKeyDown and IsShiftKeyDown() then
+        local n = StackCount(itemID)
+        if n > 1 then
+            label = "|cff4fd1c5Watchdog AH|r |cff9ea3afx" .. n .. "|r"
+            price = price * n
+        end
+    end
+    tt:AddDoubleLine(label, TipCoin(price) .. AgeText(), 1, 1, 1, 1, 1, 1)
     if tt.Show then tt:Show() end
 end
 

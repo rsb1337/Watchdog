@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.14
+
+### Novo
+- Tooltip "Watchdog AH": segurando Shift com o mouse sobre uma pilha, mostra o valor da pilha inteira (ex.: x20 = 20 vezes o preco unitario); soltando o Shift volta ao preco individual. O tooltip se atualiza na hora, sem mexer o mouse.
+
 ## 1.7.13
 
 ### Alterado
