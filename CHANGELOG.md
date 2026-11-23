@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.16
+
+### Alterado
+- Aba Atalhos: removida a secao "Windows and actions" (Report, Commands list, Settings, New session, Max nameplate range, Welcome guide) e o botao Borders (os contornos ficam so no inventario). Sobraram os botoes de ligar/desligar: gold/hour, XP/hour, session gold, inventory value e Minimap icon.
+
 ## 1.7.15
 
 ### Corrigido

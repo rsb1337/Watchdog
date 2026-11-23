@@ -2023,24 +2023,12 @@ function BuildButtonsPanel(host)
         { label = L[BAR_DEFS.exp.nameK], on = BarOn("exp"), click = BarGo("exp") },
         { label = L[BAR_DEFS.sgold.nameK], on = BarOn("sgold"), click = BarGo("sgold") },
         { label = L[BAR_DEFS.igold.nameK], on = BarOn("igold"), click = BarGo("igold") },
-        { label = L.inv_borders, on = function() return WD:BorderOpt().on end, click = function() WD:ToggleBorders() end },
         { label = L.btn_minimap, on = function() return not WatchdogDB.hideMinimap end,
           click = function()
               WatchdogDB.hideMinimap = not WatchdogDB.hideMinimap
               if ui.minimap then ui.minimap:SetShown(not WatchdogDB.hideMinimap) end
           end },
     })
-    y = y + 6
-    Section(L.btn_sec_open)
-    Grid({
-        { label = L.btn_report, action = true, click = function() WD:ShowReport() end },
-        { label = L.btn_commands, action = true, click = function() if WD.ToggleCommands then WD:ToggleCommands() end end },
-        { label = L.btn_config, action = true, click = function() if WD.ToggleConfig then WD:ToggleConfig() end end },
-        { label = L.btn_newsession, action = true, click = function() WD:StartNewSession() end },
-        { label = L.btn_nameplates, action = true, click = function() WD:MaxNameplateRange(); print("|cffffd100Watchdog:|r " .. L.msg_nameplates) end },
-        { label = L.btn_wizard, action = true, click = function() if WD.ShowWizard then WD:ShowWizard(true) end end },
-    })
-
     local acc = 0
     p:SetScript("OnUpdate", function(_, el)
         acc = acc + el
