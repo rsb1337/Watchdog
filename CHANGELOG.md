@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.3
+
+### Novo
+- Scan da casa de leiloes: botao "Watchdog: Scan" na janela da AH (e na aba Leilao) le o menor preco de cada item. Tag "Watchdog AH" no tooltip, abaixo do vendor, com a idade do scan.
+- Aba "Leilao": busca no catalogo do ultimo scan (consulta de qualquer lugar), ordenacao por nome/preco, engrenagem com as configuracoes.
+- Valor dos itens agora usa o maior entre vendor e AH. Se o vendor for >= X% do preco da AH (padrao 80%, ajustavel e desativavel na engrenagem), vale o vendor. Vale para ouro/hora, inventario, mobs e resumo da sessao; o resumo separa itens valorizados por vendor e por AH.
+- Contornos coloridos nos itens (prata = vale mais no vendor, dourado = vale mais na AH; cores escolhidas na engrenagem), com botao liga/desliga na aba Inventario, nos Atalhos e em /wd bordas. Tambem tenta contornar os itens das bolsas do jogo.
+- Comandos: /wd ah, /wd scan, /wd bordas.
+
 ## 1.7.2
 
 ### Novo

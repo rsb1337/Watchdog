@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.7.2"
+WD.version = "1.7.3"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -139,10 +139,11 @@ local function EntryFromBucket(s, start, stop)
         money = s.money or 0,
         income = s.income, spent = s.spent,
         bagDelta = (s.bagStart and s.bagLast) and (s.bagLast - s.bagStart) or nil,
+        bagDeltaA = (s.bagStartA and s.bagLastA) and (s.bagLastA - s.bagStartA) or nil,
         value = WD:BucketValue(s),
         t = t,
     }
-    e.ahPrice, e.ahVendor = WD:AHTotals(start)
+    e.ahPrice, e.ahVendor, e.ahVendorA = WD:AHTotals(start)
     return e
 end
 
@@ -185,6 +186,7 @@ function WD:RecordOf(e, now)
         pvpKills = e.pvpKills or 0, deaths = e.deaths or 0, honor = e.honor or 0,
         money = e.money or 0, income = e.income, spent = e.spent, bagDelta = e.bagDelta, value = e.value or 0, t = e.t,
         ahPrice = e.ahPrice or 0, ahVendor = e.ahVendor or 0,
+        bagDeltaA = e.bagDeltaA, ahVendorA = e.ahVendorA or 0,
     }
     return r
 end
@@ -198,13 +200,16 @@ function WD:GoldSummary(r)
     if r.income == nil then
         return { probable = r.value or 0, legacy = true }
     end
-    local inv = (r.bagDelta or 0) - (r.ahVendor or 0)
-    local ah = r.ahPrice or 0
+    local inv = (r.bagDelta or 0) - (r.ahVendor or 0)          -- itens (vendor + AH), sem os listados
+    local invA = (r.bagDeltaA or 0) - (r.ahVendorA or 0)       -- parte valorizada pela AH
+    local posted = r.ahPrice or 0
     return {
         coin = r.income,
         inv = inv,
-        ah = ah,
-        probable = math.max(0, r.income + inv + ah),
+        invA = invA,
+        invV = inv - invA,
+        ah = posted + invA,
+        probable = math.max(0, r.income + inv + posted),
     }
 end
 
@@ -212,11 +217,12 @@ end
 function WD:SessionProbable()
     local s = WatchdogCharDB.session
     if not s then return 0 end
-    local ahP, ahV = WD:AHTotals(WatchdogCharDB.sessionStart)
+    local ahP, ahV, ahVA = WD:AHTotals(WatchdogCharDB.sessionStart)
     local r = {
         income = s.income or 0,
         bagDelta = (s.bagStart and s.bagLast) and (s.bagLast - s.bagStart) or nil,
-        ahPrice = ahP, ahVendor = ahV,
+        bagDeltaA = (s.bagStartA and s.bagLastA) and (s.bagLastA - s.bagStartA) or nil,
+        ahPrice = ahP, ahVendor = ahV, ahVendorA = ahVA,
     }
     return WD:GoldSummary(r).probable
 end
@@ -235,7 +241,7 @@ end
 
 -- Janela por tempo (ex.: ultimas 24h): soma as sessoes (proporcional ao trecho que cai na
 -- janela) e calcula o tempo offline = janela (desde a 1a sessao registrada) - tempo online.
-local SUM_KEYS = { "kills", "xp", "killXP", "questXP", "quests", "levels", "pvpKills", "deaths", "honor", "money", "income", "spent", "bagDelta", "value", "ahPrice", "ahVendor" }
+local SUM_KEYS = { "kills", "xp", "killXP", "questXP", "quests", "levels", "pvpKills", "deaths", "honor", "money", "income", "spent", "bagDelta", "bagDeltaA", "value", "ahPrice", "ahVendor", "ahVendorA" }
 function WD:WindowRecord(hours)
     pcall(WD.UpdateBagValue, WD)
     local now = time()
@@ -321,12 +327,46 @@ function WD:GetItemDisplay(itemID)
     return name or ("Item #" .. itemID), quality, sell
 end
 
+-- Valor de um item: vendor x preco do Watchdog AH. Regra: se o vendor for >= pct% do preco da AH,
+-- vale o vendor (facil de vender); senao vale o da AH. Retorna valor unitario, usaAH.
+local function AHOpt()
+    local o = WatchdogDB.ahv
+    if not o then o = { on = true, pct = 80 }; WatchdogDB.ahv = o end
+    if o.on == nil then o.on = true end
+    if not o.pct then o.pct = 80 end
+    return o
+end
+function WD:AHOpt() return AHOpt() end
+function WD:AHPrice(itemID)
+    local d = WatchdogDB.ahPrices
+    local e = d and itemID and d[itemID]
+    return e and e.p or nil, e
+end
+function WD:UnitValue(itemID, sell)
+    if sell == nil then local _, _, s2 = self:GetItemDisplay(itemID); sell = s2 end
+    sell = tonumber(sell) or 0
+    local o = AHOpt()
+    if o.on then
+        local p = self:AHPrice(itemID)
+        if p and p > 0 and sell < (o.pct / 100) * p then return p, true end
+    end
+    return sell, false
+end
+-- Muda a regra / chegou scan novo: as bolsas passam a ser reavaliadas sem gerar lucro falso.
+function WD:BumpValuation()
+    WatchdogDB.valSig = (WatchdogDB.valSig or 0) + 1
+    pcall(WD.UpdateBagValue, WD)
+    WD:Refresh()
+    if WD.RefreshAHTab then WD:RefreshAHTab() end
+end
+
 -- Valor (cobre) dos itens dropados por um mob, sem o dinheiro.
 function WD:MobItemsValue(mob)
     local total = 0
     for id, qty in pairs(mob.loot) do
         local _, _, sell = self:GetItemDisplay(id)
-        if sell and sell > 0 then total = total + sell * qty end
+        local v = self:UnitValue(id, sell)
+        if v and v > 0 then total = total + v * qty end
     end
     return total
 end
@@ -436,7 +476,7 @@ end
 -- Le as bolsas e devolve { slots = {...}, total, used, value }.
 -- Cada slot: { bag, slot, icon?, count?, quality?, link?, itemID?, name?, sell?, value? }
 local function ScanIDs(self, ids)
-    local out = { slots = {}, total = 0, used = 0, value = 0, pending = 0 }
+    local out = { slots = {}, total = 0, used = 0, value = 0, valueA = 0, pending = 0 }
     for _, bag in ipairs(ids) do
         local n = GetNumSlots and GetNumSlots(bag) or 0
         for slot = 1, n do
@@ -452,8 +492,11 @@ local function ScanIDs(self, ids)
                     entry.name = name
                     entry.quality = entry.quality or q
                     entry.sell = sell
-                    entry.value = (sell or 0) * entry.count
+                    local uv, isA = self:UnitValue(itemID, sell)
+                    entry.value = uv * entry.count
+                    entry.src = isA and "a" or "v"
                     out.value = out.value + entry.value
+                    if isA then out.valueA = out.valueA + entry.value end
                     if sell == nil then out.pending = out.pending + 1 end
                 end
                 out.used = out.used + 1
@@ -485,20 +528,24 @@ local function TransitList()
     return WatchdogCharDB.transit
 end
 local function TransitTotal()
-    local now, total, l = time(), 0, TransitList()
+    local now, v, a, l = time(), 0, 0, TransitList()
     for i = #l, 1, -1 do
-        if now - l[i].t > TRANSIT_TTL then table.remove(l, i) else total = total + l[i].v end
+        if now - l[i].t > TRANSIT_TTL then table.remove(l, i) else v = v + l[i].v; a = a + (l[i].a or 0) end
     end
-    return total
+    return v, a
 end
-local function TransitAdd(v)
-    if v > 0 then local l = TransitList(); l[#l + 1] = { t = time(), v = v } end
+local function TransitAdd(v, a)
+    if v > 0 then local l = TransitList(); l[#l + 1] = { t = time(), v = v, a = math.max(0, math.min(a or 0, v)) } end
 end
-local function TransitTake(v)
+local function TransitTake(x)
     local l = TransitList()
-    while v > 0 and l[1] do
-        if l[1].v <= v then v = v - l[1].v; table.remove(l, 1)
-        else l[1].v = l[1].v - v; v = 0 end
+    while x > 0 and l[1] do
+        local e = l[1]
+        if e.v <= x then x = x - e.v; table.remove(l, 1)
+        else
+            local f = x / e.v
+            e.a = (e.a or 0) * (1 - f); e.v = e.v - x; x = 0
+        end
     end
 end
 
@@ -514,18 +561,18 @@ local function AHPurge()
 end
 function WD:AHTotals(sid)
     AHPurge()
-    local price, vendor = 0, 0
+    local price, vendor, va = 0, 0, 0
     for _, e in ipairs(AHList()) do
-        if e.sid == sid then price = price + e.price; vendor = vendor + e.vendor end
+        if e.sid == sid then price = price + e.price; vendor = vendor + e.vendor; va = va + (e.va or 0) end
     end
-    return price, vendor
+    return price, vendor, va
 end
-local function AHAdd(count, price, vendor, runTime, name)
+local function AHAdd(count, price, vendor, runTime, name, va)
     if not price or price <= 0 then return end
     local hours = ({ [1] = 12, [2] = 24, [3] = 48 })[runTime] or 48
     local l = AHList()
     l[#l + 1] = { t = time(), sid = WatchdogCharDB.sessionStart, count = count or 1, price = price,
-        vendor = vendor or 0, name = name, exp = time() + hours * 3600 + 3600 }
+        vendor = vendor or 0, va = va or 0, name = name, exp = time() + hours * 3600 + 3600 }
     WD:QueueBagValue()
 end
 -- Dinheiro de venda recebido (descontada a taxa de 5%): remove das listagens, da mais antiga pra mais nova.
@@ -541,7 +588,7 @@ local function AHTakeMoney(d)
         else
             local f = d / net
             vend = vend + e.vendor * f; used = used + d
-            e.price = e.price * (1 - f); e.vendor = e.vendor * (1 - f); d = 0
+            e.price = e.price * (1 - f); e.vendor = e.vendor * (1 - f); e.va = (e.va or 0) * (1 - f); d = 0
         end
     end
     return vend, used
@@ -560,7 +607,7 @@ local function AHTakeVendor(v)
 end
 
 local bankOpen, ahOpen, mailOpen = false, false, false
-local lastBags
+local lastBags, lastBagsA
 -- Valor de vendor de tudo que e seu: bolsas + banco (ultimo visto) + itens em transito.
 function WD:UpdateBagValue()
     local s = WatchdogCharDB and WatchdogCharDB.session
@@ -569,6 +616,7 @@ function WD:UpdateBagValue()
         local bank = self:ScanBank()
         if bank.pending == 0 and bank.total > 0 then
             WatchdogCharDB.bankValue = bank.value
+            WatchdogCharDB.bankValueA = bank.valueA
         end
     end
     local scan = self:ScanBags()
@@ -576,13 +624,26 @@ function WD:UpdateBagValue()
     -- Variacao das bolsas com AH/correio abertos = item em transito (nao e perda).
     if lastBags then
         local d = scan.value - lastBags
-        if d < 0 and (ahOpen or mailOpen) then TransitAdd(-d)
+        local dA = scan.valueA - (lastBagsA or 0)
+        if d < 0 and (ahOpen or mailOpen) then TransitAdd(-d, -dA)
         elseif d > 0 and mailOpen then TransitTake(d) end
     end
-    lastBags = scan.value
-    local total = scan.value + (WatchdogCharDB.bankValue or 0) + TransitTotal()
-    s.bagLast = total
+    lastBags, lastBagsA = scan.value, scan.valueA
+    local tv, ta = TransitTotal()
+    local total = scan.value + (WatchdogCharDB.bankValue or 0) + tv
+    local totalA = scan.valueA + (WatchdogCharDB.bankValueA or 0) + ta
+    -- Valorizacao mudou (scan novo / regra / versao): desloca o ponto de partida pra nao virar lucro falso.
+    local sig = WatchdogDB.valSig or 0
+    if s.valSig ~= sig then
+        if s.bagStart ~= nil and s.bagLast ~= nil then
+            s.bagStart = s.bagStart + (total - s.bagLast)
+            s.bagStartA = (s.bagStartA or (s.bagLastA or 0)) + (totalA - (s.bagLastA or 0))
+        end
+        s.valSig = sig
+    end
+    s.bagLast, s.bagLastA = total, totalA
     if s.bagStart == nil then s.bagStart = total end
+    if s.bagStartA == nil then s.bagStartA = totalA end
 end
 
 -- Dinheiro que chega pelo correio (venda na AH etc.) quita o valor em transito.
@@ -612,6 +673,17 @@ local function UnitVendor(idOrName)
     local ok, _, _, _, _, _, _, _, _, _, _, sell = pcall(GetItemInfo, idOrName)
     return (ok and tonumber(sell)) or 0
 end
+local function ListV(idOrName, n)
+    n = n or 1
+    if type(idOrName) == "number" then return (WD:UnitValue(idOrName)) * n end
+    return UnitVendor(idOrName) * n
+end
+local function ListA(idOrName, n)
+    n = n or 1
+    if type(idOrName) ~= "number" then return 0 end
+    local v, isA = WD:UnitValue(idOrName)
+    return isA and v * n or 0
+end
 function WD:OnSellSlot()
     sellCache = nil
     if not GetAuctionSellItemInfo then return end
@@ -629,7 +701,7 @@ local function OnPostAuction(minBid, buyout, runTime, stackSize, numStacks)
     local per = (tonumber(buyout) and buyout > 0) and buyout or tonumber(minBid) or 0
     local count = stackSize * numStacks
     local unit = s and UnitVendor(s.itemID or s.name) or 0
-    AHAdd(count, per * numStacks, unit * count, runTime, s and s.name)
+    AHAdd(count, per * numStacks, ListV(s and (s.itemID or s.name), count), runTime, s and s.name, ListA(s and (s.itemID or s.name), count))
 end
 local function OnPostItemNew(itemLocation, duration, quantity, bid, buyout)
     Diag(string.format("PostItem dur=%s qty=%s bid=%s buyout=%s", Safe(duration), Safe(quantity), Safe(bid), Safe(buyout)))
@@ -640,7 +712,7 @@ local function OnPostItemNew(itemLocation, duration, quantity, bid, buyout)
     end
     quantity = tonumber(quantity) or 1
     local price = (tonumber(buyout) and buyout > 0) and buyout or tonumber(bid) or 0
-    AHAdd(quantity, price, UnitVendor(id) * quantity, 3, nil)
+    AHAdd(quantity, price, ListV(id, quantity), 3, nil, ListA(id, quantity))
 end
 local function OnPostCommodity(itemLocation, duration, quantity, unitPrice)
     Diag(string.format("PostCommodity dur=%s qty=%s unit=%s", Safe(duration), Safe(quantity), Safe(unitPrice)))
@@ -650,7 +722,7 @@ local function OnPostCommodity(itemLocation, duration, quantity, unitPrice)
         if ok then id = v end
     end
     quantity = tonumber(quantity) or 1
-    AHAdd(quantity, (tonumber(unitPrice) or 0) * quantity, UnitVendor(id) * quantity, 3, nil)
+    AHAdd(quantity, (tonumber(unitPrice) or 0) * quantity, ListV(id, quantity), 3, nil, ListA(id, quantity))
 end
 -- Sincroniza com a lista REAL de leilões do jogador (fonte confiavel): { {id=, count=, price=}, ... }
 function WD:SyncOwned(owned)
@@ -669,7 +741,7 @@ function WD:SyncOwned(owned)
             new[#new + 1] = found
         else
             new[#new + 1] = { t = time(), sid = WatchdogCharDB.sessionStart, count = o.count, price = o.price,
-                vendor = UnitVendor(o.id or o.name) * o.count, id = o.id, name = o.name,
+                vendor = ListV(o.id or o.name, o.count), va = ListA(o.id or o.name, o.count), id = o.id, name = o.name,
                 exp = time() + 49 * 3600 }
         end
     end
@@ -1525,6 +1597,8 @@ local function Init()
     WatchdogDB.items = WatchdogDB.items or {}
     WatchdogDB.rareNames = WatchdogDB.rareNames or {}
     WatchdogDB.watch = WatchdogDB.watch or {}
+    WatchdogDB.ahPrices = WatchdogDB.ahPrices or {}
+    AHOpt()
     WatchdogDB.alerts = WatchdogDB.alerts or {}
     local a = WatchdogDB.alerts
     if a.drop == nil then a.drop = true end

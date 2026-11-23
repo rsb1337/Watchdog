@@ -42,6 +42,7 @@ local TABS = {
     { key = "alerts", titleK = "title_alerts" },
     { key = "black",  titleK = "title_black" },
     { key = "buttons", titleK = "title_buttons" },
+    { key = "ah", titleK = "title_ah" },
 }
 -- Menu lateral: grupos. O grupo PvE tem sub-menu (mobs / EXP / inventario / historico).
 local GROUPS = {
@@ -50,6 +51,7 @@ local GROUPS = {
     { key = "alerts", labelK = "tab_alerts" },
     { key = "black",  labelK = "tab_black" },
     { key = "buttons", labelK = "tab_buttons" },
+    { key = "ah", labelK = "tab_ah" },
 }
 local PVE_SUBS = {
     { key = "pve",  labelK = "sub_mobs" },
@@ -89,6 +91,7 @@ local frame
 local ui = {}
 local BuildBlackPanel -- definido mais abaixo (usado por WD:Render)
 local BuildButtonsPanel -- idem
+local BuildAHPanel -- idem
 local rows = {}
 local tiles = {}
 local slots = {}
@@ -106,7 +109,7 @@ local function Gray(text) return Hex(C.dim) .. tostring(text) .. "|r" end
 
 local function QualityColor(quality)
     local c = quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
-    if c and c.hex then return c.hex end
+    if c and type(c.hex) == "string" then return c.hex end
     return "|cffffffff"
 end
 
@@ -385,7 +388,10 @@ local function SetSlot(i, entry)
         b.icon:Show()
         b.count:SetText((entry.count or 1) > 1 and entry.count or "")
         local qc = entry.quality and entry.quality >= 2 and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[entry.quality]
-        if qc then
+        local vc = entry.itemID and WD:ItemBorderColor(entry.itemID)
+        if vc then
+            Flat(b, C.card, vc, 1)
+        elseif qc then
             Flat(b, C.card, { qc.r, qc.g, qc.b }, 1)
         else
             Flat(b, C.card, C.border, 1)
@@ -761,7 +767,7 @@ RenderDetail = function(r, isWin)
         SetTile(8, 2, 3, 116, L.d_gold_ah, dash, C.gold, nil, true)
         SetTile(9, 3, 3, 116, L.d_gold_prob, GoldFmt(g.probable), C.gold, L.d_gold_legacy, true)
     else
-        SetTile(7, 1, 3, 116, L.d_gold_coll, GoldFmt(g.coin + g.inv), C.gold, nil, true)
+        SetTile(7, 1, 3, 116, L.d_gold_coll, GoldFmt(g.coin + g.invV), C.gold, nil, true)
         SetTile(8, 2, 3, 116, L.d_gold_ah, GoldFmt(g.ah), C.gold, nil, true)
         SetTile(9, 3, 3, 116, L.d_gold_prob, GoldFmt(g.probable), C.gold, r.goldPartial and L.d_partial or nil, true)
     end
@@ -845,6 +851,13 @@ local function SetChipVisibility()
     for _, b in ipairs(ui.periodButtons) do b:SetShown(inPeriodTab) end
     for _, b in ipairs(ui.viewButtons) do b:SetShown(state.tab == "inv") end
     ui.sortBtn:SetShown(state.tab == "pve" and not state.mob)
+    if ui.borderBtn then
+        ui.borderBtn:ClearAllPoints(); ui.borderBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, rowY)
+        ui.borderBtn:SetShown(state.tab == "inv")
+        local bon = WD:BorderOpt().on
+        ui.borderBtn.text:SetText(L.inv_borders .. ": " .. (bon and L.cfg_on or L.cfg_off))
+        ui.borderBtn:SetActive(bon)
+    end
     for _, b in ipairs(ui.subChips) do b:SetShown(grp == "pve"); b:SetActive(b.key == state.tab) end
     ui.back:ClearAllPoints(); ui.back:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, rowY)   -- na linha do segundo menu
     for _, b in ipairs(ui.histChips) do
@@ -880,11 +893,12 @@ function WD:Render()
     local showSlots = false
     contentH = 1
 
-    local isPanel = (state.tab == "alerts" or state.tab == "black" or state.tab == "buttons")
+    local isPanel = (state.tab == "alerts" or state.tab == "black" or state.tab == "buttons" or state.tab == "ah")
     ui.foot:SetShown(not isPanel)
     if ui.cfgHost then ui.cfgHost:SetShown(state.tab == "alerts") end
     if ui.blackHost then ui.blackHost:SetShown(state.tab == "black") end
     if ui.buttonsHost then ui.buttonsHost:SetShown(state.tab == "buttons") end
+    if ui.ahHost then ui.ahHost:SetShown(state.tab == "ah") end
     if state.tab == "alerts" then
         if not ui.cfgHost and WD.CreateConfigPanel then ui.cfgHost = WD:CreateConfigPanel(frame, SIDE_W + PAD) end
         ui.scroll:Hide(); ui.back:Hide(); ui.info:Hide()
@@ -907,6 +921,12 @@ function WD:Render()
         ui.scroll:Hide(); ui.back:Hide(); ui.info:Hide()
         ui.buttonsHost:Show()
         ui.summary:SetText(Gray(L.btn_summary))
+    elseif state.tab == "ah" then
+        if not ui.ahHost then ui.ahHost = BuildAHPanel(frame) end
+        ui.scroll:Hide(); ui.back:Hide(); ui.info:Hide()
+        ui.ahHost:Show()
+        ui.summary:SetText(Gray(L.ah_summary))
+        if WD.RefreshAHTab then WD:RefreshAHTab() end
     elseif state.tab == "pve" then
         ui.info:Hide()
         ui.scroll:Show()
@@ -1684,6 +1704,15 @@ local function CreateMainFrame()
         prev = b
     end
 
+    -- Contornos vendor x AH (so na aba Inventario)
+    ui.borderBtn = MakeChip(f, "", 150)
+    ui.borderBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, -106)
+    ui.borderBtn:SetScript("OnClick", function() WD:ToggleBorders(); WD:Render() end)
+    ui.borderBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM"); GameTooltip:SetText(L.inv_borders_tip, nil, nil, nil, nil, true); GameTooltip:Show()
+    end)
+    ui.borderBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
     -- Ordenacao da lista de mobs (PvE)
     ui.sortBtn = MakeChip(f, L[SORTS[1].labelK], 104)
     ui.sortBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, -106)
@@ -1993,6 +2022,7 @@ function BuildButtonsPanel(host)
         { label = L[BAR_DEFS.exp.nameK], on = BarOn("exp"), click = BarGo("exp") },
         { label = L[BAR_DEFS.sgold.nameK], on = BarOn("sgold"), click = BarGo("sgold") },
         { label = L[BAR_DEFS.igold.nameK], on = BarOn("igold"), click = BarGo("igold") },
+        { label = L.inv_borders, on = function() return WD:BorderOpt().on end, click = function() WD:ToggleBorders() end },
         { label = L.btn_minimap, on = function() return not WatchdogDB.hideMinimap end,
           click = function()
               WatchdogDB.hideMinimap = not WatchdogDB.hideMinimap
@@ -2016,6 +2046,201 @@ function BuildButtonsPanel(host)
         if acc >= 0.5 then acc = 0; for _, fn in ipairs(refreshers) do fn() end end
     end)
     p:SetScript("OnShow", function() for _, fn in ipairs(refreshers) do fn() end end)
+    return p
+end
+
+---------------------------------------------------------------------------
+-- Aba AH: busca no catalogo do ultimo scan (AH movel: so consulta)
+---------------------------------------------------------------------------
+local AH_ROWS = 14
+function BuildAHPanel(host)
+    local left = SIDE_W + PAD
+    local p = CreateFrame("Frame", nil, host)
+    p:SetPoint("TOPLEFT", host, "TOPLEFT", left, -76)
+    p:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -PAD, PAD)
+    p:Hide()
+
+    local box = CreateFrame("Frame", nil, p, BT)
+    box:SetPoint("TOPLEFT", 0, 0)
+    box:SetSize(260, 26)
+    Flat(box, C.bg, C.border, 1)
+    local eb = CreateFrame("EditBox", nil, box)
+    eb:SetAutoFocus(false)
+    eb:SetFont(FONT, 12, "")
+    eb:SetTextColor(C.text[1], C.text[2], C.text[3])
+    eb:SetPoint("TOPLEFT", 6, -3); eb:SetPoint("BOTTOMRIGHT", -6, 3)
+    eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    local ph = FS(box, 12, C.mute, "LEFT")
+    ph:SetPoint("LEFT", 8, 0)
+    ph:SetText(L.ah_search)
+
+    local sortBtn = MakeChip(p, "", 110)
+    sortBtn:SetPoint("LEFT", box, "RIGHT", 8, 0)
+    local scanChip = MakeChip(p, L.ah_tab_scan, 110)
+    scanChip:SetPoint("LEFT", sortBtn, "RIGHT", 6, 0)
+    scanChip:SetScript("OnClick", function() WD:StartAHScan() end)
+
+    -- Engrenagem: configuracoes do valor AH x vendor e das cores dos contornos
+    local gear = CreateFrame("Button", nil, p, BT)
+    gear:SetSize(26, 26)
+    gear:SetPoint("LEFT", scanChip, "RIGHT", 6, 0)
+    Flat(gear, C.card, C.border, 1)
+    local gi = gear:CreateTexture(nil, "ARTWORK")
+    gi:SetPoint("TOPLEFT", 3, -3); gi:SetPoint("BOTTOMRIGHT", -3, 3)
+    gi:SetTexture("Interface\\Icons\\INV_Misc_Gear_01")
+    local pop = CreateFrame("Frame", nil, p, BT)
+    pop:SetSize(330, 150)
+    pop:SetPoint("TOPRIGHT", gear, "BOTTOMRIGHT", 0, -4)
+    pop:SetFrameStrata("DIALOG")
+    Flat(pop, C.bg, C.border, 1)
+    pop:Hide()
+    local function PopRow(y, text)
+        local l = FS(pop, 12, C.text, "LEFT")
+        l:SetPoint("TOPLEFT", 10, y)
+        l:SetText(text)
+        return l
+    end
+    PopRow(-14, L.ah_cfg_use)
+    local useChip = MakeChip(pop, "", 60)
+    useChip:SetPoint("TOPRIGHT", -10, -9)
+    PopRow(-46, L.ah_cfg_pct)
+    local plus = MakeChip(pop, "+", 26)
+    plus:SetPoint("TOPRIGHT", -10, -41)
+    local pctFS = FS(pop, 12, C.text, "CENTER")
+    pctFS:SetPoint("RIGHT", plus, "LEFT", -4, 0); pctFS:SetWidth(44)
+    local minus = MakeChip(pop, "-", 26)
+    minus:SetPoint("RIGHT", pctFS, "LEFT", -4, 0)
+    PopRow(-78, L.ah_cfg_vcol)
+    local vChip = MakeChip(pop, "", 110)
+    vChip:SetPoint("TOPRIGHT", -10, -73)
+    PopRow(-110, L.ah_cfg_acol)
+    local aChip = MakeChip(pop, "", 110)
+    aChip:SetPoint("TOPRIGHT", -10, -105)
+    local function PopPaint()
+        local o = WD:AHOpt()
+        useChip.text:SetText(o.on and L.cfg_on or L.cfg_off); useChip:SetActive(o.on)
+        pctFS:SetText(o.pct .. "%")
+        local b = WD:BorderOpt()
+        local function sw(key)
+            for _, pc in ipairs(WD.PALETTE) do
+                if pc.key == key then
+                    return string.format("|cff%02x%02x%02x■|r %s", pc.c[1] * 255, pc.c[2] * 255, pc.c[3] * 255, L["col_" .. key] or key)
+                end
+            end
+            return key
+        end
+        vChip.text:SetText(sw(b.vk)); aChip.text:SetText(sw(b.ak))
+    end
+    useChip:SetScript("OnClick", function() local o = WD:AHOpt(); o.on = not o.on; PopPaint(); WD:BumpValuation() end)
+    plus:SetScript("OnClick", function() local o = WD:AHOpt(); o.pct = math.min(100, o.pct + 5); PopPaint(); WD:BumpValuation() end)
+    minus:SetScript("OnClick", function() local o = WD:AHOpt(); o.pct = math.max(50, o.pct - 5); PopPaint(); WD:BumpValuation() end)
+    vChip:SetScript("OnClick", function() WD:CycleBorderColor("vendor"); PopPaint(); WD:UpdateBagBorders(); WD:Refresh() end)
+    aChip:SetScript("OnClick", function() WD:CycleBorderColor("ah"); PopPaint(); WD:UpdateBagBorders(); WD:Refresh() end)
+    gear:SetScript("OnClick", function() pop:SetShown(not pop:IsShown()); PopPaint() end)
+    gear:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_BOTTOM"); GameTooltip:SetText(L.ah_cfg_tip); GameTooltip:Show() end)
+    gear:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    local info = FS(p, 11, C.dim, "LEFT")
+    info:SetPoint("TOPLEFT", p, "TOPLEFT", 2, -32)
+    local rule = FS(p, 11, C.dim, "LEFT")
+    rule:SetPoint("TOPLEFT", p, "TOPLEFT", 2, -48)
+
+    local hdrY = -68
+    local function Hdr(text, point, x, w, just)
+        local h = FS(p, 10, C.mute, just)
+        h:SetPoint(point, p, point, x, hdrY)
+        h:SetWidth(w); h:SetText(text)
+    end
+    Hdr(L.ah_col_item, "TOPLEFT", 6, 220, "LEFT")
+    Hdr(L.ah_col_qty, "TOPRIGHT", -250, 50, "RIGHT")
+    Hdr(L.ah_col_vendor, "TOPRIGHT", -130, 110, "RIGHT")
+    Hdr(L.ah_col_ah, "TOPRIGHT", -4, 120, "RIGHT")
+
+    local rows = {}
+    for r = 1, AH_ROWS do
+        local row = CreateFrame("Frame", nil, p)
+        row:SetHeight(20)
+        row:SetPoint("TOPLEFT", p, "TOPLEFT", 0, -84 - (r - 1) * 21)
+        row:SetPoint("TOPRIGHT", p, "TOPRIGHT", 0, -84 - (r - 1) * 21)
+        local bg = row:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(C.card[1], C.card[2], C.card[3], (r % 2 == 0) and 0.5 or 0.22)
+        row.name = FS(row, 12, C.text, "LEFT")
+        row.name:SetPoint("LEFT", 6, 0); row.name:SetWidth(250); row.name:SetWordWrap(false)
+        row.qty = FS(row, 11, C.dim, "RIGHT")
+        row.qty:SetPoint("RIGHT", -250, 0); row.qty:SetWidth(50)
+        row.vend = FS(row, 11, C.dim, "RIGHT")
+        row.vend:SetPoint("RIGHT", -130, 0); row.vend:SetWidth(110)
+        row.ah = FS(row, 11, C.text, "RIGHT")
+        row.ah:SetPoint("RIGHT", -4, 0); row.ah:SetWidth(120)
+        row:Hide()
+        rows[r] = row
+    end
+
+    local state2 = { sort = "name", offset = 0, q = "", list = {} }
+    local function Rebuild()
+        local q = eb:GetText()
+        if type(q) ~= "string" then q = "" end
+        ph:SetShown(q == "" and not eb:HasFocus())
+        q = q:lower():gsub("^%s+", "")
+        q = q:gsub("%s+$", "")
+        local out = {}
+        for _, e in ipairs(WD:AHIndex()) do
+            if q == "" or e.lname:find(q, 1, true) then out[#out + 1] = e end
+        end
+        if state2.sort == "price" then
+            table.sort(out, function(a, b) return a.p > b.p end)
+        end
+        state2.list = out
+        state2.offset = 0
+    end
+    local function Paint()
+        sortBtn.text:SetText(state2.sort == "price" and L.ah_sort_price or L.ah_sort_name)
+        local t, cnt = WD:AHScanInfo()
+        if t then
+            local h = (time() - t) / 3600
+            local age = h < 1 and string.format("%dm", math.max(1, math.floor(h * 60))) or (h < 48 and string.format("%dh", math.floor(h)) or string.format("%dd", math.floor(h / 24)))
+            info:SetText(string.format(L.ah_info, cnt, age, #state2.list))
+        else
+            info:SetText(L.ah_noscan)
+        end
+        local o = WD:AHOpt()
+        rule:SetText(o.on and string.format(L.ah_rule_on, o.pct) or L.ah_rule_off)
+        local n = #state2.list
+        state2.offset = math.max(0, math.min(math.max(0, n - AH_ROWS), state2.offset))
+        for r = 1, AH_ROWS do
+            local e = state2.list[state2.offset + r]
+            local row = rows[r]
+            if e then
+                local _, quality, sell = WD:GetItemDisplay(e.id)
+                row.name:SetText(QualityColor(quality) .. e.name .. "|r")
+                row.qty:SetText(Num(e.q))
+                row.vend:SetText((sell and sell > 0) and Coins(sell) or "-")
+                row.ah:SetText(Coins(e.p))
+                row:Show()
+            else
+                row:Hide()
+            end
+        end
+    end
+    p.Paint = Paint
+    eb:SetScript("OnTextChanged", function() Rebuild(); Paint() end)
+    eb:SetScript("OnEditFocusGained", function() ph:Hide() end)
+    eb:SetScript("OnEditFocusLost", function() ph:SetShown((eb:GetText() or "") == "") end)
+    sortBtn:SetScript("OnClick", function()
+        state2.sort = (state2.sort == "name") and "price" or "name"
+        Rebuild(); Paint()
+    end)
+    p:EnableMouseWheel(true)
+    p:SetScript("OnMouseWheel", function(_, delta)
+        state2.offset = state2.offset - delta * 3
+        Paint()
+    end)
+    p:SetScript("OnShow", function() Rebuild(); Paint() end)
+    p:SetScript("OnHide", function() pop:Hide() end)
+    function WD:RefreshAHTab()
+        if p:IsShown() then Rebuild(); Paint() end
+    end
     return p
 end
 
@@ -2166,6 +2391,13 @@ SlashCmdList.WATCHDOG = function(msg)
         if WD.ToggleConfig then WD:ToggleConfig() end
     elseif cmd == "premium" or cmd == "lista" or cmd == "watchlist" or cmd == "blacklist" or cmd == "black" then
         WD:Toggle("black")
+    elseif cmd == "ah" or cmd == "leilao" or cmd == "leilão" then
+        WD:Toggle("ah")
+    elseif cmd == "bordas" or cmd == "borders" or cmd == "contornos" then
+        WD:ToggleBorders()
+        print("|cffffd100Watchdog:|r " .. L.inv_borders .. ": " .. (WD:BorderOpt().on and L.cfg_on or L.cfg_off))
+    elseif cmd == "scan" then
+        WD:StartAHScan()
     elseif cmd == "nameplates" or cmd == "plaquinhas" or cmd == "alcance" then
         WD:MaxNameplateRange()
         print("|cffffd100Watchdog:|r " .. L.msg_nameplates)
