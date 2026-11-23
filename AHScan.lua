@@ -418,6 +418,7 @@ shiftFrame:SetScript("OnEvent", function(_, _, key)
     local tt = GameTooltip
     if not (tt and tt.IsShown and tt:IsShown() and tt.GetOwner) then return end
     local o = tt:GetOwner()
+    if type(o) ~= "table" then return end
     local h = o and o.GetScript and o:GetScript("OnEnter")
     if h then pcall(h, o) end
 end)

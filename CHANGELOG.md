@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.0
+
+### Novo
+- Aba Leilao: passar o mouse sobre um item mostra o tooltip normal do jogo (stats, requisitos, texto de uso, mais as linhas dos outros addons e a linha "Watchdog AH"). Se o item ainda nao estiver no cache do jogo, o tooltip se completa sozinho em instantes. As linhas ganharam destaque ao passar o mouse e a roda do mouse continua rolando a lista.
+
 ## 1.7.17
 
 ### Corrigido

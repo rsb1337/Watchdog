@@ -2159,8 +2159,43 @@ function BuildAHPanel(host)
         row.vend:SetPoint("RIGHT", -130, 0); row.vend:SetWidth(110)
         row.ah = FS(row, 11, C.text, "RIGHT")
         row.ah:SetPoint("RIGHT", -4, 0); row.ah:SetWidth(120)
+        -- destaque + tooltip do item ao passar o mouse
+        row:EnableMouse(true)
+        row.hl = row:CreateTexture(nil, "HIGHLIGHT")
+        row.hl:SetAllPoints(); row.hl:SetColorTexture(1, 1, 1, 0.07)
         row:Hide()
         rows[r] = row
+    end
+
+    local function ShowTip(row)
+        local id = row.itemID
+        if not id then return end
+        GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+        local ok = false
+        if GameTooltip.SetItemByID then ok = pcall(GameTooltip.SetItemByID, GameTooltip, id) end
+        if not ok then pcall(GameTooltip.SetHyperlink, GameTooltip, "item:" .. id) end
+        row.tipLoaded = GetItemInfo(id) ~= nil
+        if not row.tipLoaded and C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, id) end
+        GameTooltip:Show()
+    end
+    for r = 1, AH_ROWS do
+        local row = rows[r]
+        row:SetScript("OnEnter", function(self) self.hover = true; ShowTip(self) end)
+        row:SetScript("OnLeave", function(self) self.hover = nil; GameTooltip:Hide() end)
+        -- item que ainda nao estava no cache do jogo: refaz o tooltip quando chegar
+        local acc = 0
+        row:SetScript("OnUpdate", function(self, el)
+            if not self.hover or self.tipLoaded then return end
+            acc = acc + el
+            if acc < 0.4 then return end
+            acc = 0
+            if self.itemID and GetItemInfo(self.itemID) then ShowTip(self) end
+        end)
+        row:EnableMouseWheel(true)
+        row:SetScript("OnMouseWheel", function(_, delta)
+            local pw = p:GetScript("OnMouseWheel")
+            if pw then pw(p, delta) end
+        end)
     end
 
     local state2 = { sort = "name", offset = 0, q = "", list = {} }
@@ -2203,8 +2238,12 @@ function BuildAHPanel(host)
                 row.qty:SetText(Num(e.q))
                 row.vend:SetText((sell and sell > 0) and Coins(sell) or "-")
                 row.ah:SetText(Coins(e.p))
+                row.itemID = e.id
                 row:Show()
+                if row.hover then ShowTip(row) end    -- rolou a lista com o mouse parado: atualiza o tooltip
             else
+                row.itemID = nil
+                if row.hover then row.hover = nil; GameTooltip:Hide() end
                 row:Hide()
             end
         end
