@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.17
+
+### Corrigido
+- Precos errados no scan da AH: o jogo entrega a lista de leiloes aos poucos (ela crescia de 58 mil para 66 mil+ durante a leitura) e o addon lia no meio do download, pegando so uma parte dos leiloes. Agora ele SEMPRE espera a quantidade parar de crescer (4s seguidos iguais, ate 4 min) antes de ler, inclusive quando usa a lista que o jogo ja tinha em memoria. Removido o recomeco automatico durante a leitura.
+- O painel mostra "Recebendo a lista... N leiloes" enquanto espera e o scan nao falha por tempo enquanto a lista ainda esta chegando.
+- Depois de atualizar, refaca o scan: os precos gravados pelos scans anteriores podem estar incompletos.
+
 ## 1.7.16
 
 ### Alterado

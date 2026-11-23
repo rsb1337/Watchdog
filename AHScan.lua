@@ -228,14 +228,6 @@ local function Process()
     local stSold, stNoBuy, stNoId, stOk = 0, 0, 0, 0
     local function step()
         if not scanning then return end
-        local nowN = A.GetNumReplicateItems and A.GetNumReplicateItems() or n
-        if nowN ~= n and (WD._restarts or 0) < 3 then
-            WD._restarts = (WD._restarts or 0) + 1
-            Dlog("lista mudou durante a leitura (" .. n .. " -> " .. nowN .. "); recomecando")
-            processing = false
-            C_Timer.After(0.5, Process)
-            return
-        end
         local last = math.min(n, i + CHUNK - 1)
         for k = i, last do
             local ok, name, _, cnt, _, _, _, _, _, _, buyout, _, _, _, _, _, saleStatus, itemID = pcall(A.GetReplicateItemInfo, k)
@@ -279,6 +271,28 @@ local function Process()
     step()
 end
 
+-- Espera a lista parar de crescer (o jogo entrega os leiloes aos poucos) e so entao le.
+local function Settle(token)
+    local A = C_AuctionHouse
+    local last, same = -1, 0
+    WD._replicating = true
+    local function step()
+        if token ~= evToken or not scanning or processing then return end
+        local n = A.GetNumReplicateItems and A.GetNumReplicateItems() or 0
+        if n == last then same = same + 1 else same, last = 0, n end
+        local waited = GetTime() - scanStart
+        if (same >= 4 and n > 0) or waited > 240 then
+            WD._replicating = nil
+            Dlog("lista estabilizada: " .. n .. " leiloes (" .. math.floor(waited) .. "s)")
+            Process()
+        else
+            Paint("wait", 0, string.format(L.ah_receiving_n or "Receiving the list... %d auctions", n), { 1, 0.85, 0.3 })
+            C_Timer.After(1.0, step)
+        end
+    end
+    step()
+end
+
 function WD:StartAHScan()
     if scanning then return end
     local A = C_AuctionHouse
@@ -298,14 +312,14 @@ function WD:StartAHScan()
     local function tick()
         if not scanning or token ~= evToken or processing then return end
         local waited = math.floor(GetTime() - scanStart)
-        if waited >= 90 then Fail(L.ah_timeout); return end
+        if waited >= 90 and not WD._replicating then Fail(L.ah_timeout); return end
         if waited >= 15 and not WD._replicating then
             -- a AH limita novos pedidos: usa a lista que o jogo ja tem em memoria, se houver
             local n = A.GetNumReplicateItems and A.GetNumReplicateItems() or 0
             if n > 0 then
-                Dlog("sem resposta em " .. waited .. "s; usando a lista em memoria (" .. n .. ")")
+                Dlog("sem resposta em " .. waited .. "s; esperando a lista em memoria estabilizar (" .. n .. ")")
                 print("|cffffd100Watchdog:|r " .. L.ah_cached)
-                Process()
+                Settle(token)
                 return
             end
         end
@@ -346,26 +360,7 @@ f:SetScript("OnEvent", function(_, event)
             local token = evToken
             -- espera a lista "assentar" (pode chegar em varios eventos)
             Paint("wait", 0, L.ah_receiving, { 1, 0.85, 0.3 })
-            C_Timer.After(1.0, function()
-                if token ~= evToken or not scanning or processing then return end
-                -- so le quando a quantidade de leiloes parar de crescer (3s seguidos iguais)
-                local A = C_AuctionHouse
-                local last, same = -1, 0
-                local function settle()
-                    if token ~= evToken or not scanning or processing then return end
-                    local n = A.GetNumReplicateItems and A.GetNumReplicateItems() or 0
-                    if n == last then same = same + 1 else same, last = 0, n end
-                    if same >= 3 or (GetTime() - scanStart) > 85 then
-                        WD._replicating = nil
-                        Dlog("lista estabilizada: " .. n .. " leiloes")
-                        Process()
-                    else
-                        Paint("wait", 0, string.format(L.ah_receiving_n or "Receiving the list... %d auctions", n), { 1, 0.85, 0.3 })
-                        C_Timer.After(1.0, settle)
-                    end
-                end
-                settle()
-            end)
+            Settle(token)
         end
     elseif event == "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED" then
         Dlog("throttled: mensagem descartada")
