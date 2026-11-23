@@ -1721,7 +1721,7 @@ local function CreateMainFrame()
     ui.borderBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     -- Ordenacao da lista de mobs (PvE)
-    ui.sortBtn = MakeChip(f, L[SORTS[1].labelK], 104)
+    ui.sortBtn = MakeChip(f, L[SORTS[1].labelK], 132)
     ui.sortBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, -106)
     -- Lista de opcoes: abre ao clicar, escolhe-se direto (sem trocar no escuro)
     local sp = CreateFrame("Frame", nil, f, BT)

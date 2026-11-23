@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.5
+
+### Alterado
+- Botao Sort da aba PvE: ficou mais largo (cresce para a esquerda) para o texto "Sort: Latest kills" nao ficar apertado; o texto continua centralizado.
+
 ## 1.8.4
 
 ### Corrigido
