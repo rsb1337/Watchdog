@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.6.23"
+WD.version = "1.6.24"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -1256,25 +1256,20 @@ end
 
 -- Macro de verdade (aparece em /macro): o jogador arrasta pra barra. Atualiza sozinha quando a lista muda.
 local MACRO_NAME = "WD Alvo"
-local MACRO_ICON = "Interface\\AddOns\\Watchdog\\Media\\emblem_icon"
-local MACRO_ICON_FALLBACK = "INV_Misc_Eye_01"
--- Tenta o emblema do addon; se o jogo nao aceitar, usa um icone padrao (olho).
-local function SetMacroIcon(idx, body)
-    pcall(EditMacro, idx, nil, MACRO_ICON, body)
-    local ok, _, icon = pcall(GetMacroInfo, idx)
-    local s = ok and icon and tostring(icon):lower() or ""
-    if not s:find("emblem_icon", 1, true) then
-        pcall(EditMacro, idx, nil, MACRO_ICON_FALLBACK, body)
-    end
+local MACRO_ICON = "Ability_Marksmanship"
+-- O jogo so aceita icones dele para macro (imagem do addon nao funciona). Poe um icone so quando ainda esta o "?".
+local function IsQuestionIcon(icon)
+    return icon == nil or icon == 134400 or tostring(icon):lower():find("questionmark", 1, true) ~= nil
 end
 function WD:InMacro(name)
     local t = WatchdogDB and WatchdogDB.macroNames
     return t and t[name:lower()] and true or false
 end
 function WD:ToggleMacroName(name)
-    WatchdogDB.macroNames = WatchdogDB.macroNames or {}
+    -- so UM mob por vez: marcar um tira o outro; marcar o mesmo de novo desmarca
     local k = name:lower()
-    WatchdogDB.macroNames[k] = (not WatchdogDB.macroNames[k]) or nil
+    local was = WatchdogDB.macroNames and WatchdogDB.macroNames[k]
+    WatchdogDB.macroNames = was and {} or { [k] = true }
     WD:SyncMacro(false)
 end
 function WD:MacroBody()
@@ -1302,13 +1297,12 @@ function WD:SyncMacro(create)
     local idx = GetMacroIndexByName(MACRO_NAME)
     if not idx or idx == 0 then
         if not create then return false end
-        local ok, res = pcall(CreateMacro, MACRO_NAME, MACRO_ICON_FALLBACK, body, false)
-        if not ok or not res then ok, res = pcall(CreateMacro, MACRO_NAME, MACRO_ICON_FALLBACK, body, true) end
+        local ok, res = pcall(CreateMacro, MACRO_NAME, MACRO_ICON, body, false)
+        if not ok or not res then ok, res = pcall(CreateMacro, MACRO_NAME, MACRO_ICON, body, true) end
         if not ok or not res then return false end
-        idx = GetMacroIndexByName(MACRO_NAME)
-        if idx and idx > 0 then SetMacroIcon(idx, body) end
     else
-        pcall(EditMacro, idx, nil, nil, body)
+        local _, icon = GetMacroInfo(idx)
+        pcall(EditMacro, idx, nil, IsQuestionIcon(icon) and MACRO_ICON or nil, body)
     end
     WD.macroDropped = dropped
     return true

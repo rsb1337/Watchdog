@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.24
+
+### Alterado
+- Macro "WD Alvo": so um mob por vez (marcar +M em um tira o anterior).
+- Icone da macro: o jogo nao aceita imagem do addon, entao usa um icone padrao do jogo (so aplicado quando a macro ainda esta com "?"; trocar manualmente em /macro vale).
+
 ## 1.6.23
 
 ### Alterado
