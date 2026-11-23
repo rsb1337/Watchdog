@@ -270,7 +270,7 @@ function WD:BigWarning(title, sub, icon, color, slot, rest)
     big:SetAlpha(0)
     big:Show()
     print("|cffffd100Watchdog:|r " .. (title or "") .. (sub and (" - " .. sub) or ""))
-    if c.sound and slot == 1 then PlaySoundSafe(8959) end
+    if c.sound and slot == 1 then WD:PlayAlertSound("warn") end
     if rest then
         for i, w in ipairs(rest) do
             if i < 4 then WD:BigWarning(w.title, w.sub, w.icon, w.color, i + 1) end
@@ -1940,6 +1940,33 @@ local function BuildConfig(host, left)
     end, 0, 5, 1, function() return A().minQuality or 3 end, function(v) A().minQuality = v end)
     Toggle(p, L.cfg_alert_rare, function() return A().rare ~= false end, function(v) A().rare = v end)
     Toggle(p, L.cfg_alert_sound, function() return A().sound ~= false end, function(v) A().sound = v end)
+    local function SoundRow(cat, labelKey)
+        local r = Row(p, 36)
+        local lab = FS(r, 13, C.text, "LEFT")
+        lab:SetPoint("LEFT", 12, 0)
+        lab:SetText(L[labelKey])
+        local test = MakeChip(r, L.cfg_snd_test, 54)
+        test:SetPoint("RIGHT", -10, 0)
+        local pick = MakeChip(r, "", 150)
+        pick:SetPoint("RIGHT", test, "LEFT", -6, 0)
+        local function paint() pick.text:SetText(L["snd_" .. WD.SOUNDS[WD:SoundIndex(cat)].key] or "?") end
+        local function play()
+            if not WD:PlayAlertSound(cat) then print("|cffffd100Watchdog:|r " .. L.cfg_snd_missing) end
+        end
+        pick:RegisterForClicks("AnyUp")
+        pick:SetScript("OnClick", function(_, btn)
+            local n, i = #WD.SOUNDS, WD:SoundIndex(cat)
+            i = (btn == "RightButton") and ((i - 2) % n + 1) or (i % n + 1)
+            WD:SetSound(cat, i); paint(); play()
+        end)
+        test:SetScript("OnClick", play)
+        f.refreshers[#f.refreshers + 1] = paint
+        paint()
+    end
+    SoundRow("rare", "cfg_snd_rare")
+    SoundRow("drop", "cfg_snd_drop")
+    SoundRow("rarekill", "cfg_snd_rarekill")
+    SoundRow("warn", "cfg_snd_warn")
     Text(p, L.cfg_alert_hint, 40)
 
     ---------------------------------------------------------------- abas

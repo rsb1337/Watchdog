@@ -176,6 +176,10 @@ WD:RegisterLocale("enUS", {
     -- alertas (toasts)
     alert_rarekill = "Rare mob slain",
     alert_drop = "Rare drop!",
+    cfg_snd_rare = "Sound: rare / A+ mob", cfg_snd_drop = "Sound: rare drop", cfg_snd_rarekill = "Sound: rare kill", cfg_snd_warn = "Sound: big warnings",
+    cfg_snd_test = "Test", cfg_snd_missing = "That sound does not exist in this client; default sound played instead.",
+    snd_raid = "Raid warning (default)", snd_ready = "Ready check", snd_levelup = "Level up", snd_quest = "Quest complete", snd_ping = "Map ping",
+    snd_whisper = "Whisper", snd_coin = "Coins", snd_auction = "Auction bell", snd_boss = "Boss warning", snd_alarm = "Alarm", snd_off = "Off",
     alert_rare = "Rare mob spotted!", alert_mob = "Watched mob spotted!", black_alert_tip = "Alert when this mob shows up (like a rare)",
     alert_rare_body = "%s (level %s)",
     -- avisos / feedback de comando
@@ -341,6 +345,10 @@ WD:RegisterLocale("ptBR", {
     q_rare = "raro", q_epic = "épico", q_legendary = "lendário",
     alert_rarekill = "Mob raro abatido",
     alert_drop = "Drop raro!",
+    cfg_snd_rare = "Som: mob raro / A+", cfg_snd_drop = "Som: drop raro", cfg_snd_rarekill = "Som: raro morto", cfg_snd_warn = "Som: avisos grandes",
+    cfg_snd_test = "Testar", cfg_snd_missing = "Esse som não existe neste cliente; tocou o som padrão.",
+    snd_raid = "Aviso de raide (padrão)", snd_ready = "Checagem de grupo", snd_levelup = "Subir de nível", snd_quest = "Missão completa", snd_ping = "Ping no mapa",
+    snd_whisper = "Sussurro", snd_coin = "Moedas", snd_auction = "Sino do leilão", snd_boss = "Aviso de chefe", snd_alarm = "Alarme", snd_off = "Desligado",
     alert_rare = "Mob raro avistado!", alert_mob = "Mob da lista avistado!", black_alert_tip = "Avisar quando esse mob aparecer (como um raro)",
     alert_rare_body = "%s (nível %s)",
     msg_new_session = "nova sessão iniciada.",

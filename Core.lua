@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.7.0"
+WD.version = "1.7.1"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -50,6 +50,33 @@ local function Dbg(...)
 end
 
 -- A UI define WD:ShowAlert. kind: "drop" | "rare" | "rarekill"
+-- Sons dos alertas: catalogo de sons do proprio WoW (SoundKit IDs). Padrao: aviso de raide (8959).
+WD.SOUNDS = {
+    { key = "raid", id = 8959 }, { key = "ready", id = 8960 }, { key = "levelup", id = 888 },
+    { key = "quest", id = 878 }, { key = "ping", id = 3175 }, { key = "whisper", id = 3081 },
+    { key = "coin", id = 120 }, { key = "auction", id = 5274 }, { key = "boss", id = 11773 },
+    { key = "alarm", id = 12867 }, { key = "off", id = 0 },
+}
+function WD:SoundIndex(cat)
+    local sv = WatchdogDB and WatchdogDB.alerts and WatchdogDB.alerts.sounds
+    local key = sv and sv[cat] or "raid"
+    for i, e in ipairs(WD.SOUNDS) do if e.key == key then return i end end
+    return 1
+end
+function WD:SetSound(cat, idx)
+    WatchdogDB.alerts = WatchdogDB.alerts or {}
+    WatchdogDB.alerts.sounds = WatchdogDB.alerts.sounds or {}
+    WatchdogDB.alerts.sounds[cat] = WD.SOUNDS[idx].key
+end
+-- Toca o som da categoria. Se o cliente nao tiver o som, cai no padrao e retorna false.
+function WD:PlayAlertSound(cat)
+    local e = WD.SOUNDS[WD:SoundIndex(cat)]
+    if e.id == 0 then return true end
+    local ok, will = pcall(PlaySound, e.id)
+    if (not ok or will == false) and e.id ~= 8959 then pcall(PlaySound, 8959); return false end
+    return true
+end
+
 function WD:Alert(kind, title, text, icon)
     if WD.ShowAlert then WD:ShowAlert(kind, title, text, icon) end
 end

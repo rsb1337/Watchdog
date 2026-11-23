@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.1
+
+### Novo
+- Alerts: escolha do som de cada tipo de alerta (mob raro / A+, drop raro, raro morto, avisos grandes) entre sons do WoW, com botao Testar. Padrao continua o aviso de raide. Clique troca para o proximo (botao direito volta), e toca o som na hora. Se o cliente nao tiver o som, toca o padrao.
+
 ## 1.7.0
 
 Versao de consolidacao (sem mudancas de codigo alem do numero). Reune as novidades da serie 1.6.x:

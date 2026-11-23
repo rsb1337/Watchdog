@@ -1022,7 +1022,7 @@ function WD:ShowAlert(kind, title, text, icon)
     toast:Show()
     print("|cffffd100Watchdog:|r " .. (title or "") .. " " .. (text or ""))
     if WatchdogDB.alerts and WatchdogDB.alerts.sound then
-        pcall(PlaySound, 8959)
+        WD:PlayAlertSound(kind)
     end
 end
 
