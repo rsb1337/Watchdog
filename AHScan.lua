@@ -106,6 +106,64 @@ local function Anchor()
     end
 end
 
+
+---------------------------------------------------------------------------
+-- Resolve nomes de itens que o jogo nao devolveu no scan (cache do cliente vazio)
+---------------------------------------------------------------------------
+local nameQueue, nameBusy, nameDirty = nil, false, false
+local nf = CreateFrame("Frame")
+pcall(nf.RegisterEvent, nf, "GET_ITEM_INFO_RECEIVED")
+nf:SetScript("OnEvent", function(_, _, id, ok)
+    local e = id and WatchdogDB and WatchdogDB.ahPrices and WatchdogDB.ahPrices[id]
+    if e and not e.n then
+        local nm = GetItemInfo(id)
+        if nm then e.n = nm; nameDirty = true end
+    end
+end)
+local function NamePump()
+    local P = WatchdogDB and WatchdogDB.ahPrices
+    if not P then nameBusy = false; return end
+    if not nameQueue then
+        nameQueue = {}
+        for id, e in pairs(P) do if not e.n then nameQueue[#nameQueue + 1] = id end end
+    end
+    local req = C_Item and C_Item.RequestLoadItemDataByID
+    local cnt = 0
+    while #nameQueue > 0 and cnt < 60 do
+        local id = table.remove(nameQueue)
+        local e = P[id]
+        if e and not e.n then
+            local nm = GetItemInfo(id)
+            if nm then e.n = nm; nameDirty = true elseif req then pcall(req, id) end
+        end
+        cnt = cnt + 1
+    end
+    if nameDirty then
+        nameDirty = false
+        WD.ahIndex = nil
+        if WD.RefreshAHTab then pcall(WD.RefreshAHTab, WD) end
+    end
+    if #nameQueue > 0 then C_Timer.After(0.4, NamePump)
+    else
+        nameQueue, nameBusy = nil, false
+        -- ultima passada: pega o que chegou depois do pedido
+        C_Timer.After(3, function()
+            local miss = false
+            for _, e in pairs(WatchdogDB.ahPrices or {}) do if not e.n then miss = true break end end
+            if miss and not nameBusy then
+                for id, e in pairs(WatchdogDB.ahPrices) do if not e.n then local nm = GetItemInfo(id); if nm then e.n = nm end end end
+                WD.ahIndex = nil
+                if WD.RefreshAHTab then pcall(WD.RefreshAHTab, WD) end
+            end
+        end)
+    end
+end
+function WD:ResolveAHNames()
+    if nameBusy then return end
+    nameBusy, nameQueue = true, nil
+    NamePump()
+end
+
 local function Finish(prices, count)
     scanning, processing = false, false
     WatchdogDB.ahPrices = prices
@@ -117,6 +175,7 @@ local function Finish(prices, count)
     Paint("done", 100, string.format(L.ah_done_panel, count, secs), { 0.3, 0.9, 0.4 })
     print("|cffffd100Watchdog:|r " .. string.format(L.ah_scan_done, count))
     WD:BumpValuation()
+    WD:ResolveAHNames()
     if WD.RefreshAHTab then WD:RefreshAHTab() end
 end
 
@@ -136,15 +195,20 @@ local function Process()
     Dlog("lista recebida: " .. n .. " leiloes")
     if n <= 0 then Fail(L.ah_scan_empty); return end
     local prices, count, i = {}, 0, 1
+    local stSold, stNoBuy, stNoId, stOk = 0, 0, 0, 0
     local function step()
         if not scanning then return end
         local last = math.min(n, i + CHUNK - 1)
         for k = i, last do
             local ok, name, _, cnt, _, _, _, _, _, _, buyout, _, _, _, _, _, saleStatus, itemID = pcall(A.GetReplicateItemInfo, k)
-            if ok and itemID and (saleStatus ~= 1) then
+            if not (ok and itemID) then stNoId = stNoId + 1
+            elseif saleStatus == 1 then stSold = stSold + 1
+            else
                 cnt = tonumber(cnt) or 1
                 buyout = tonumber(buyout) or 0
+                if buyout <= 0 then stNoBuy = stNoBuy + 1 end
                 if cnt > 0 and buyout > 0 then
+                    stOk = stOk + 1
                     local unit = buyout / cnt
                     local e = prices[itemID]
                     if not e then
@@ -166,6 +230,8 @@ local function Process()
                 if not e.n then local nm = GetItemInfo(id); if nm then e.n = nm end end
                 e.p = math.floor(e.p + 0.5)
             end
+            Dlog(string.format("auctions=%d usable=%d no_buyout=%d sold=%d no_item=%d items=%d", n, stOk, stNoBuy, stSold, stNoId, count))
+            print(string.format("|cffffd100Watchdog:|r %d auctions read: %d with buyout, %d bid-only (skipped), %d invalid", n, stOk, stNoBuy, stSold + stNoId))
             if count == 0 then Fail(L.ah_scan_empty) else Finish(prices, count) end
         else
             i = last + 1
@@ -287,6 +353,7 @@ end
 ---------------------------------------------------------------------------
 function WD:AHIndex()
     if WD.ahIndex then return WD.ahIndex end
+    if not WD._namesAsked then WD._namesAsked = true; C_Timer.After(1, function() WD:ResolveAHNames() end) end
     local list = {}
     for id, e in pairs(WatchdogDB.ahPrices or {}) do
         local name = e.n

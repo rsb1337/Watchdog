@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.7
+
+### Corrigido
+- Aba Leilao: itens que apareciam como "Item #1234" (e por isso nao eram achados na busca) agora tem o nome carregado em segundo plano, aos poucos, assim que o jogo os envia. A lista e a busca se atualizam sozinhas.
+- Scan: ao terminar, mostra no chat quantos leiloes foram lidos, quantos tinham preco de compra imediata e quantos foram ignorados (so lance), e grava isso no diagnostico.
+
 ## 1.7.6
 
 ### Corrigido
