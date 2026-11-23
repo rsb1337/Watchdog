@@ -2077,14 +2077,11 @@ function BuildAHPanel(host)
 
     local sortBtn = MakeChip(p, "", 110)
     sortBtn:SetPoint("LEFT", box, "RIGHT", 8, 0)
-    local scanChip = MakeChip(p, L.ah_tab_scan, 110)
-    scanChip:SetPoint("LEFT", sortBtn, "RIGHT", 6, 0)
-    scanChip:SetScript("OnClick", function() WD:StartAHScan() end)
 
     -- Engrenagem: configuracoes do valor AH x vendor e das cores dos contornos
     local gear = CreateFrame("Button", nil, p, BT)
     gear:SetSize(26, 26)
-    gear:SetPoint("LEFT", scanChip, "RIGHT", 6, 0)
+    gear:SetPoint("LEFT", sortBtn, "RIGHT", 6, 0)
     Flat(gear, C.card, C.border, 1)
     local gi = gear:CreateTexture(nil, "ARTWORK")
     gi:SetPoint("TOPLEFT", 3, -3); gi:SetPoint("BOTTOMRIGHT", -3, 3)

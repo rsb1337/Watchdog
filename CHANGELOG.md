@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.6
+
+### Corrigido
+- Scan da AH: o botao agora fica num painel preso na janela da AH do WoW (acima do canto esquerdo, arrastavel; se o cliente nao expuser a janela, aparece solto na tela). Removido o botao Scan da aba Leilao do addon.
+- Barra de progresso do scan: pedindo a lista, aguardando (segundos), recebendo, lendo X / total (%), concluido com itens e tempo, ou erro em vermelho (AH ocupada, sem resposta em 90s, sem API).
+- Espera a lista "assentar" antes de ler (ela pode chegar em varios eventos) e registra cada etapa em WatchdogDB.ahDiag para diagnostico.
+
 ## 1.7.5
 
 ### Alterado

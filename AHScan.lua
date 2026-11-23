@@ -3,15 +3,107 @@ local _, WD = ...
 local L = WD.L
 
 local scanning, ahOpen, processing = false, false, false
-local scanBtn
+local panel               -- painel do scan (preso na janela da AH do WoW)
+local evToken = 0
 local CHUNK = 400
+local scanStart
 
 function WD:AHScanInfo()
     return WatchdogDB and WatchdogDB.ahScanTime, WatchdogDB and WatchdogDB.ahScanCount or 0
 end
 
-local function SetBtn(text)
-    if scanBtn then scanBtn:SetText(text) end
+local function Dlog(msg)
+    local d = WatchdogDB
+    if not d then return end
+    d.ahDiag = d.ahDiag or { api = {}, log = {} }
+    local l = d.ahDiag.log
+    l[#l + 1] = date("%H:%M:%S ") .. "scan: " .. tostring(msg)
+    if #l > 80 then table.remove(l, 1) end
+end
+
+---------------------------------------------------------------------------
+-- Painel do scan: botao + barra de progresso na janela da AH do WoW
+---------------------------------------------------------------------------
+local function AHFrame()
+    return _G.AuctionHouseFrame or _G.AuctionFrame
+end
+
+-- state: "idle" | "wait" | "read" | "done" | "error"
+local function Paint(state, pct, text, color)
+    if not panel then return end
+    panel.state = state
+    panel.text:SetText(text or "")
+    local c = color or { 0.8, 0.8, 0.85 }
+    panel.text:SetTextColor(c[1], c[2], c[3])
+    local busy = (state == "wait" or state == "read")
+    panel.btn:SetEnabled(not busy)
+    panel.bar:SetMinMaxValues(0, 100)
+    if state == "read" then
+        panel.bar:SetValue(pct or 0)
+        panel.bar:SetStatusBarColor(0.2, 0.7, 1)
+    elseif state == "done" then
+        panel.bar:SetValue(100)
+        panel.bar:SetStatusBarColor(0.2, 0.85, 0.3)
+    elseif state == "error" then
+        panel.bar:SetValue(100)
+        panel.bar:SetStatusBarColor(0.9, 0.25, 0.25)
+    elseif state == "wait" then
+        panel.bar:SetValue(0)
+        panel.bar:SetStatusBarColor(0.9, 0.7, 0.2)
+    else
+        panel.bar:SetValue(0)
+    end
+end
+
+local function BuildPanel()
+    if panel then return panel end
+    panel = CreateFrame("Frame", "WatchdogScanPanel", UIParent, "BackdropTemplate")
+    panel:SetSize(300, 54)
+    panel:SetFrameStrata("DIALOG")
+    panel:SetClampedToScreen(true)
+    panel:SetMovable(true)
+    panel:EnableMouse(true)
+    panel:RegisterForDrag("LeftButton")
+    panel:SetScript("OnDragStart", function(self) self:StartMoving() end)
+    panel:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+    if panel.SetBackdrop then
+        panel:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        panel:SetBackdropColor(0.05, 0.06, 0.08, 0.95)
+        panel:SetBackdropBorderColor(0.3, 0.32, 0.38, 1)
+    end
+    local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    title:SetPoint("TOPLEFT", 8, -6)
+    title:SetText("|cff4fd1c5Watchdog|r " .. (L.ah_panel_title or "AH scan"))
+    panel.btn = CreateFrame("Button", "WatchdogAHScanButton", panel, "UIPanelButtonTemplate")
+    panel.btn:SetSize(96, 20)
+    panel.btn:SetPoint("TOPRIGHT", -6, -4)
+    panel.btn:SetText(L.ah_btn_scan)
+    panel.btn:SetScript("OnClick", function() WD:StartAHScan() end)
+    panel.text = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    panel.text:SetPoint("TOPLEFT", 8, -24)
+    panel.text:SetPoint("TOPRIGHT", -8, -24)
+    panel.text:SetJustifyH("LEFT")
+    panel.bar = CreateFrame("StatusBar", nil, panel)
+    panel.bar:SetPoint("BOTTOMLEFT", 6, 6)
+    panel.bar:SetPoint("BOTTOMRIGHT", -6, 6)
+    panel.bar:SetHeight(8)
+    panel.bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
+    local bg = panel.bar:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(); bg:SetColorTexture(0.15, 0.16, 0.2, 1)
+    panel:Hide()
+    return panel
+end
+
+-- Prende o painel na janela da AH (acima do canto esquerdo); se a janela nao existir, fica solto e arrastavel.
+local function Anchor()
+    BuildPanel()
+    local fr = AHFrame()
+    panel:ClearAllPoints()
+    if fr then
+        panel:SetPoint("BOTTOMLEFT", fr, "TOPLEFT", 0, 4)
+    else
+        panel:SetPoint("TOP", UIParent, "TOP", 0, -120)
+    end
 end
 
 local function Finish(prices, count)
@@ -20,23 +112,29 @@ local function Finish(prices, count)
     WatchdogDB.ahScanTime = time()
     WatchdogDB.ahScanCount = count
     WD.ahIndex = nil
-    SetBtn(L.ah_btn_scan)
+    local secs = scanStart and math.max(1, math.floor(GetTime() - scanStart)) or 0
+    Dlog("done " .. count .. " itens em " .. secs .. "s")
+    Paint("done", 100, string.format(L.ah_done_panel, count, secs), { 0.3, 0.9, 0.4 })
     print("|cffffd100Watchdog:|r " .. string.format(L.ah_scan_done, count))
     WD:BumpValuation()
     if WD.RefreshAHTab then WD:RefreshAHTab() end
 end
 
--- Processa a lista do leilao em pedacos (nao trava o jogo).
+local function Fail(msg)
+    scanning, processing = false, false
+    Dlog("erro: " .. msg)
+    Paint("error", 100, msg, { 1, 0.4, 0.4 })
+    print("|cffffd100Watchdog:|r " .. msg)
+end
+
+-- Processa a lista do leilao em pedacos (nao trava o jogo) mostrando o progresso.
 local function Process()
     if processing then return end
     processing = true
     local A = C_AuctionHouse
     local n = A.GetNumReplicateItems and A.GetNumReplicateItems() or 0
-    if n <= 0 then
-        scanning = false; processing = false; SetBtn(L.ah_btn_scan)
-        print("|cffffd100Watchdog:|r " .. L.ah_scan_empty)
-        return
-    end
+    Dlog("lista recebida: " .. n .. " leiloes")
+    if n <= 0 then Fail(L.ah_scan_empty); return end
     local prices, count, i = {}, 0, 1
     local function step()
         if not scanning then return end
@@ -61,14 +159,14 @@ local function Process()
                 end
             end
         end
-        SetBtn(string.format(L.ah_btn_progress, math.floor(last / n * 100)))
+        local pct = math.floor(last / n * 100)
+        Paint("read", pct, string.format(L.ah_reading, last, n, pct), { 0.6, 0.85, 1 })
         if last >= n then
-            -- completa nomes que o cliente ainda nao devolveu
             for id, e in pairs(prices) do
                 if not e.n then local nm = GetItemInfo(id); if nm then e.n = nm end end
                 e.p = math.floor(e.p + 0.5)
             end
-            Finish(prices, count)
+            if count == 0 then Fail(L.ah_scan_empty) else Finish(prices, count) end
         else
             i = last + 1
             C_Timer.After(0, step)
@@ -81,43 +179,67 @@ function WD:StartAHScan()
     if scanning then return end
     local A = C_AuctionHouse
     if not ahOpen then print("|cffffd100Watchdog:|r " .. L.ah_open_first); return end
-    if not (A and A.ReplicateItems) then print("|cffffd100Watchdog:|r " .. L.ah_noapi); return end
-    scanning = true
-    SetBtn(L.ah_btn_wait)
-    local ok = pcall(A.ReplicateItems)
-    if not ok then scanning = false; SetBtn(L.ah_btn_scan); print("|cffffd100Watchdog:|r " .. L.ah_noapi); return end
-    C_Timer.After(25, function()
-        if scanning and not WD._replicating then
-            scanning = false; SetBtn(L.ah_btn_scan)
-            print("|cffffd100Watchdog:|r " .. L.ah_timeout)
+    Anchor(); panel:Show()
+    if not (A and A.ReplicateItems) then Fail(L.ah_noapi); return end
+    scanning, processing = true, false
+    scanStart = GetTime()
+    evToken = evToken + 1
+    Paint("wait", 0, L.ah_waiting, { 1, 0.85, 0.3 })
+    local ok, err = pcall(A.ReplicateItems)
+    Dlog("ReplicateItems ok=" .. tostring(ok) .. " err=" .. tostring(err))
+    if not ok then Fail(L.ah_noapi); return end
+    -- contador de espera + tempo limite (o jogo pode demorar ou limitar a frequencia do scan)
+    local token = evToken
+    local function tick()
+        if not scanning or token ~= evToken or processing then return end
+        local waited = math.floor(GetTime() - scanStart)
+        if waited >= 90 then Fail(L.ah_timeout); return end
+        if not WD._replicating then
+            Paint("wait", 0, string.format(L.ah_waiting_s, waited), { 1, 0.85, 0.3 })
         end
-    end)
-end
-
-local function MakeButton()
-    if scanBtn or not AuctionHouseFrame then return end
-    scanBtn = CreateFrame("Button", "WatchdogAHScanButton", AuctionHouseFrame, "UIPanelButtonTemplate")
-    scanBtn:SetSize(130, 22)
-    scanBtn:SetPoint("TOPRIGHT", AuctionHouseFrame, "TOPRIGHT", -34, -2)
-    scanBtn:SetText(L.ah_btn_scan)
-    scanBtn:SetScript("OnClick", function() WD:StartAHScan() end)
-    scanBtn:SetFrameLevel((AuctionHouseFrame:GetFrameLevel() or 1) + 10)
+        C_Timer.After(1, tick)
+    end
+    C_Timer.After(1, tick)
 end
 
 local f = CreateFrame("Frame")
-for _, e in ipairs({ "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "REPLICATE_ITEM_LIST_UPDATE" }) do pcall(f.RegisterEvent, f, e) end
+for _, e in ipairs({ "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "REPLICATE_ITEM_LIST_UPDATE",
+    "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", "AUCTION_HOUSE_THROTTLED_SYSTEM_READY" }) do pcall(f.RegisterEvent, f, e) end
 f:SetScript("OnEvent", function(_, event)
     if event == "AUCTION_HOUSE_SHOW" then
         ahOpen = true
-        MakeButton()
+        Dlog("AH aberta; janela=" .. tostring(AHFrame() and (AHFrame():GetName() or "?") or "nenhuma"))
+        Anchor(); panel:Show()
+        if not scanning then
+            local t, cnt = WD:AHScanInfo()
+            if t then
+                Paint("idle", 0, string.format(L.ah_last_panel, cnt, date("%d/%m %H:%M", t)), { 0.7, 0.7, 0.75 })
+            else
+                Paint("idle", 0, L.ah_panel_hint, { 0.7, 0.7, 0.75 })
+            end
+        end
     elseif event == "AUCTION_HOUSE_CLOSED" then
         ahOpen = false
-        if scanning then scanning, processing = false, false; SetBtn(L.ah_btn_scan) end
+        if scanning then scanning, processing = false, false; Dlog("AH fechada durante o scan") end
+        if panel then panel:Hide() end
     elseif event == "REPLICATE_ITEM_LIST_UPDATE" then
+        Dlog("evento REPLICATE_ITEM_LIST_UPDATE (scanning=" .. tostring(scanning) .. ")")
         if scanning and not processing then
             WD._replicating = true
-            C_Timer.After(0.2, function() WD._replicating = nil; if scanning then Process() end end)
+            evToken = evToken + 1
+            local token = evToken
+            -- espera a lista "assentar" (pode chegar em varios eventos)
+            Paint("wait", 0, L.ah_receiving, { 1, 0.85, 0.3 })
+            C_Timer.After(1.0, function()
+                if token == evToken and scanning and not processing then
+                    WD._replicating = nil
+                    Process()
+                end
+            end)
         end
+    elseif event == "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED" then
+        Dlog("throttled: mensagem descartada")
+        if scanning and not processing then Fail(L.ah_busy) end
     end
 end)
 
