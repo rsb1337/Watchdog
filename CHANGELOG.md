@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.8
+
+### Corrigido
+- Tooltip "Watchdog AH": o preco agora aparece com os icones de ouro, prata e cobre (antes saia so o numero, ex.: "33").
+
 ## 1.7.7
 
 ### Corrigido

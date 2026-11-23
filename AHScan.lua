@@ -321,12 +321,23 @@ local function AgeText()
     return string.format("  |cff808080(%dd)|r", math.floor(h / 24))
 end
 
+-- Moeda com icones (ouro/prata/cobre) montada na mao, igual ao tooltip do jogo.
+local function TipCoin(c)
+    c = math.floor(tonumber(c) or 0)
+    local g, sv, cp = math.floor(c / 10000), math.floor((c % 10000) / 100), c % 100
+    local function ic(n) return "|TInterface\\MoneyFrame\\UI-" .. n .. "Icon:0:0:2:0|t" end
+    local out = ""
+    if g > 0 then out = out .. g .. ic("Gold") .. " " end
+    if g > 0 or sv > 0 then out = out .. sv .. ic("Silver") .. " " end
+    return out .. cp .. ic("Copper")
+end
+
 local function AddTag(tt, itemID)
     if not itemID or not tt or not tt.AddDoubleLine then return end
     local p = WD:AHPrice(itemID)
     if not p then return end
-    local coin = GetCoinTextureString and GetCoinTextureString(math.floor(p)) or tostring(math.floor(p))
-    tt:AddDoubleLine("|cff4fd1c5Watchdog AH|r", coin .. AgeText())
+    local coin = TipCoin(math.floor(p))
+    tt:AddDoubleLine("|cff4fd1c5Watchdog AH|r", coin .. AgeText(), 1, 1, 1, 1, 1, 1)
     if tt.Show then tt:Show() end
 end
 
