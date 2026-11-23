@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.2
+
+### Corrigido
+- Gold da sessao zerando (ex.: ao skinnar): a deteccao de itens soulbound por tooltip podia errar quando o jogo ainda nao tinha carregado o tooltip (inicio da sessao, /reload, loot), valendo o item pelo preco da AH no ponto de partida e pelo vendor depois, o que criava uma queda falsa no valor das bolsas. Agora usa primeiro a informacao direta do jogo (C_Item.IsBound), so depois o tooltip, e quando nao ha certeza o valor das bolsas nao e atualizado (tenta de novo em 2s, ate 4 vezes) em vez de chutar. Itens ja vistos como soulbound ficam assim por 2 minutos.
+- Depois de atualizar, inicie uma "New session": o ponto de partida da sessao atual pode ter sido gravado com o valor errado.
+
 ## 1.8.1
 
 ### Novo

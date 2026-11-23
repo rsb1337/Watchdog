@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.8.1"
+WD.version = "1.8.2"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -648,8 +648,16 @@ function WD:UpdateBagValue()
             WatchdogCharDB.bankValueA = bank.valueA
         end
     end
+    WD._boundUnsure = false
     local scan = self:ScanBags()
     if scan.pending > 0 then return end
+    if WD._boundUnsure and (WD._unsureTries or 0) < 4 and C_Timer and C_Timer.After then
+        -- o jogo ainda nao disse se algum item esta preso: tenta de novo daqui a pouco (ate 4 vezes)
+        WD._unsureTries = (WD._unsureTries or 0) + 1
+        C_Timer.After(2, function() pcall(WD.UpdateBagValue, WD) end)
+        return
+    end
+    WD._unsureTries = 0
     -- Variacao das bolsas com AH/correio abertos = item em transito (nao e perda).
     if lastBags then
         local d = scan.value - lastBags

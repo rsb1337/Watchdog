@@ -479,16 +479,18 @@ end
 ---------------------------------------------------------------------------
 local boundCache = {}
 local scanTip
+-- true / false = certeza; nil = o jogo ainda nao deu a informacao (nao chutar)
 local function TipBound(bag, slot)
     local sb = _G.ITEM_SOULBOUND or "Soulbound"
     if C_TooltipInfo and C_TooltipInfo.GetBagItem then
         local d = C_TooltipInfo.GetBagItem(bag, slot)
-        if d and d.lines then
+        if d and d.lines and #d.lines > 1 then
             for _, ln in ipairs(d.lines) do
                 if ln.leftText == sb then return true end
             end
             return false
         end
+        return nil
     end
     if not scanTip then
         scanTip = CreateFrame("GameTooltip", "WatchdogScanTip", nil, "GameTooltipTemplate")
@@ -496,13 +498,26 @@ local function TipBound(bag, slot)
     end
     scanTip:ClearLines()
     scanTip:SetOwner(UIParent, "ANCHOR_NONE")
-    if not scanTip.SetBagItem then return false end
+    if not scanTip.SetBagItem then return nil end
     scanTip:SetBagItem(bag, slot)
-    for i = 1, (scanTip:NumLines() or 0) do
+    local n = scanTip:NumLines() or 0
+    if n < 2 then return nil end
+    for i = 1, n do
         local fs = _G["WatchdogScanTipTextLeft" .. i]
         if fs and fs:GetText() == sb then return true end
     end
     return false
+end
+-- Fonte mais confiavel: o proprio jogo diz se o item esta preso (C_Item.IsBound)
+local function ApiBound(bag, slot)
+    if C_Item and C_Item.IsBound and ItemLocation and ItemLocation.CreateFromBagAndSlot then
+        local loc = ItemLocation:CreateFromBagAndSlot(bag, slot)
+        if loc and (not C_Item.DoesItemExist or C_Item.DoesItemExist(loc)) then
+            local v = C_Item.IsBound(loc)
+            if v ~= nil then return v and true or false end
+        end
+    end
+    return nil
 end
 function WD:SlotBound(bag, slot, info)
     if not info then return false end
@@ -514,9 +529,17 @@ function WD:SlotBound(bag, slot, info)
     local key = bag .. ":" .. slot
     local c = boundCache[key]
     local now = GetTime()
-    if c and c.id == id and now - c.t < 5 then return c.v end
-    local ok, v = pcall(TipBound, bag, slot)
-    v = ok and v or false
+    if c and c.id == id and (c.v and now - c.t < 120 or now - c.t < 5) then return c.v end
+    local ok, v = pcall(ApiBound, bag, slot)
+    if not ok then v = nil end
+    if v == nil then
+        local ok2, v2 = pcall(TipBound, bag, slot)
+        v = ok2 and v2 or nil
+    end
+    if v == nil then
+        WD._boundUnsure = true            -- sem informacao: quem chamou nao deve atualizar valores
+        return (c and c.id == id and c.v) or false
+    end
     boundCache[key] = { id = id, v = v, t = now }
     return v
 end
