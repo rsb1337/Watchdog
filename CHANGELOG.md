@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.23
+
+### Alterado
+- Black list: removidos a tecla de alvo (F7/Reset/Off) e o botao seguro; fica so o botao "Pegar macro".
+- Cada nome da lista ganhou um botao "+M": so os marcados entram na macro "WD Alvo" (que se atualiza sozinha fora de combate). Remover o nome da lista tira a marca.
+
 ## 1.6.22
 
 ### Novo

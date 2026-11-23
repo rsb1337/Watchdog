@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.6.22"
+WD.version = "1.6.23"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -1249,32 +1249,11 @@ function WD:RemoveWatch(name, kind)
     local t = WatchTable(kind)
     if name == "" or not t then return end
     t[name:lower()] = nil
+    if WatchdogDB and WatchdogDB.macroNames then WatchdogDB.macroNames[name:lower()] = nil end
     if WD.RefreshNameplates then WD:RefreshNameplates() end
     WD:UpdateTargetMacro()
 end
 
--- Tecla de alvo: um botao seguro com um "macro" montado a partir da Black list.
--- Apertar a tecla seleciona como alvo o primeiro nome da lista que estiver por perto.
-local targetBtn
--- Fora de combate: escolhe, entre as plaquinhas, um alvo VIVO da Black list; apertando de novo, passa pro proximo.
-function WD:PickAliveTarget(btn)
-    if InCombatLockdown() then return end
-    local plates = C_NamePlate and C_NamePlate.GetNamePlates and C_NamePlate.GetNamePlates()
-    if not plates then return end
-    local cands, curIdx = {}, nil
-    local curGUID = UnitExists("target") and UnitGUID("target") or nil
-    for _, plate in ipairs(plates) do
-        local u = plate.namePlateUnitToken or (plate.UnitFrame and plate.UnitFrame.unit)
-        if u and UnitExists(u) and not UnitIsDead(u) and WD:IsUnitWatched(u) then
-            cands[#cands + 1] = u
-            if curGUID and UnitGUID(u) == curGUID then curIdx = #cands end
-        end
-    end
-    if #cands == 0 then return end
-    local pick = cands[((curIdx or 0) % #cands) + 1]
-    btn:SetAttribute("type", "target")
-    btn:SetAttribute("unit", pick)
-end
 -- Macro de verdade (aparece em /macro): o jogador arrasta pra barra. Atualiza sozinha quando a lista muda.
 local MACRO_NAME = "WD Alvo"
 local MACRO_ICON = "Interface\\AddOns\\Watchdog\\Media\\emblem_icon"
@@ -1288,10 +1267,22 @@ local function SetMacroIcon(idx, body)
         pcall(EditMacro, idx, nil, MACRO_ICON_FALLBACK, body)
     end
 end
+function WD:InMacro(name)
+    local t = WatchdogDB and WatchdogDB.macroNames
+    return t and t[name:lower()] and true or false
+end
+function WD:ToggleMacroName(name)
+    WatchdogDB.macroNames = WatchdogDB.macroNames or {}
+    local k = name:lower()
+    WatchdogDB.macroNames[k] = (not WatchdogDB.macroNames[k]) or nil
+    WD:SyncMacro(false)
+end
 function WD:MacroBody()
     local names = {}
     for _, kind in ipairs({ "pve", "pvp" }) do
-        for _, n in ipairs(WD:WatchList(kind)) do names[#names + 1] = n end
+        for _, n in ipairs(WD:WatchList(kind)) do
+            if WD:InMacro(n) then names[#names + 1] = n end
+        end
     end
     local tail = "\n/cleartarget [dead]"
     local lines, len, dropped = {}, #tail, 0
@@ -1329,42 +1320,8 @@ function WD:PickupTargetMacro()
     return true
 end
 function WD:UpdateTargetMacro()
-    if InCombatLockdown() then WD._targetPending = true; WD.targetKeyState = "pending"; return end
+    if InCombatLockdown() then WD._targetPending = true; return end
     WD._targetPending = nil
-    if not targetBtn then
-        targetBtn = CreateFrame("Button", "WatchdogTargetBtn", UIParent, "SecureActionButtonTemplate")
-        targetBtn:RegisterForClicks("AnyDown")
-        targetBtn:SetScript("PreClick", function(self) WD:PickAliveTarget(self) end)
-        targetBtn:SetScript("PostClick", function(self)
-            if not InCombatLockdown() then self:SetAttribute("type", "macro") end
-        end)
-    end
-    targetBtn:SetAttribute("type", "macro")
-    -- Em combate o botao nao pode ser alterado: vale este comando (por nome). Ele tambem pode
-    -- pegar corpos, entao repete e limpa o alvo se ele estiver morto.
-    local block, len = {}, 0
-    for _, kind in ipairs({ "pve", "pvp" }) do
-        for _, name in ipairs(WD:WatchList(kind)) do
-            local line = "/targetexact " .. name
-            if len + #line + 1 > 300 then break end
-            block[#block + 1] = line; len = len + #line + 1
-        end
-    end
-    -- sem [noexists]: sobrepoe o alvo atual. Linhas em ordem inversa: o ultimo que existe (o primeiro da lista) vence.
-    local rev = {}
-    for i = #block, 1, -1 do rev[#rev + 1] = block[i] end
-    targetBtn:SetAttribute("macrotext", table.concat(rev, "\n") .. "\n/cleartarget [dead]")
-    ClearOverrideBindings(targetBtn)
-    local key = WatchdogDB and WatchdogDB.targetKey
-    if key == nil then key = "CAPSLOCK" end
-    if key ~= "" and key:upper() ~= "OFF" then
-        key = key:upper():gsub("%s+", "")
-        pcall(SetOverrideBindingClick, targetBtn, true, key, "WatchdogTargetBtn", "LeftButton")
-        local ok, act = pcall(GetBindingAction, key, true)
-        WD.targetKeyState = (ok and type(act) == "string" and act:find("WatchdogTargetBtn", 1, true)) and "ok" or "fail"
-    else
-        WD.targetKeyState = "off"
-    end
     WD:SyncMacro(false)
 end
 

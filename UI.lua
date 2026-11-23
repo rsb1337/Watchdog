@@ -1227,18 +1227,9 @@ function BuildBlackPanel(host)
     hint:SetJustifyH("LEFT")
     hint:SetText(L.black_hint)
 
-    -- Tecla de alvo (clique e aperte a tecla desejada)
-    local keyLbl = FS(p, 11, C.dim, "LEFT")
-    keyLbl:SetPoint("TOPLEFT", p, "TOPLEFT", 2, -39)
-    keyLbl:SetText(L.black_key)
-    local keyBtn = MakeChip(p, "", 100)
-    keyBtn:SetPoint("LEFT", keyLbl, "RIGHT", 8, 0)
-    local resetChip = MakeChip(p, L.black_key_reset, 62)
-    resetChip:SetPoint("LEFT", keyBtn, "RIGHT", 6, 0)
-    local offChip = MakeChip(p, L.w_off, 46)
-    offChip:SetPoint("LEFT", resetChip, "RIGHT", 6, 0)
-    local macroChip = MakeChip(p, L.black_macro, 96)
-    macroChip:SetPoint("LEFT", offChip, "RIGHT", 6, 0)
+    -- Botao da macro (a macro leva so os nomes marcados com "M" na lista)
+    local macroChip = MakeChip(p, L.black_macro, 110)
+    macroChip:SetPoint("TOPLEFT", p, "TOPLEFT", 2, -37)
     macroChip:SetScript("OnClick", function()
         local ok, why = WD:PickupTargetMacro()
         if ok then
@@ -1247,54 +1238,9 @@ function BuildBlackPanel(host)
             print("|cff7ec8ffWatchdog:|r " .. (why == "combat" and L.black_macro_combat or L.black_macro_full))
         end
     end)
-    local keyStatus = FS(p, 11, C.dim, "LEFT")
-    keyStatus:SetPoint("LEFT", macroChip, "RIGHT", 8, 0)
-    local capturing = false
-    local function KeyText()
-        local k = WatchdogDB.targetKey
-        if k == nil then k = "CAPSLOCK" end
-        if k == "" or k == "OFF" then return L.w_off end
-        return k
-    end
-    local function RefreshKey()
-        keyBtn.text:SetText(capturing and L.black_key_press or KeyText())
-        local st = WD.targetKeyState
-        local map = {
-            ok = { L.black_key_ok, C.green }, fail = { L.black_key_fail, C.red },
-            pending = { L.black_key_pending, C.gold }, off = { L.black_key_off, C.dim },
-        }
-        local m = map[st or "off"] or map.off
-        keyStatus:SetText(m[1]); keyStatus:SetTextColor(m[2][1], m[2][2], m[2][3])
-    end
-    local function ApplyKey(k)
-        capturing = false
-        keyBtn:EnableKeyboard(false)
-        WatchdogDB.targetKey = k
-        WD:UpdateTargetMacro()
-        RefreshKey()
-    end
-    local IGNORE = { LSHIFT = 1, RSHIFT = 1, LCTRL = 1, RCTRL = 1, LALT = 1, RALT = 1, LMETA = 1, RMETA = 1 }
-    keyBtn:RegisterForClicks("AnyUp")
-    keyBtn:SetScript("OnClick", function(self, button)
-        if capturing and button ~= "LeftButton" then
-            local m = { MiddleButton = "BUTTON3", Button4 = "BUTTON4", Button5 = "BUTTON5" }
-            if m[button] then ApplyKey(m[button]) end
-            return
-        end
-        capturing = not capturing
-        self:EnableKeyboard(capturing)
-        RefreshKey()
-    end)
-    keyBtn:SetScript("OnKeyDown", function(self, key)
-        if not capturing then return end
-        if key == "ESCAPE" then capturing = false; self:EnableKeyboard(false); RefreshKey(); return end
-        if IGNORE[key] then return end
-        local mods = (IsAltKeyDown() and "ALT-" or "") .. (IsControlKeyDown() and "CTRL-" or "") .. (IsShiftKeyDown() and "SHIFT-" or "")
-        ApplyKey(mods .. key:upper())
-    end)
-    resetChip:SetScript("OnClick", function() ApplyKey(nil) end)
-    offChip:SetScript("OnClick", function() ApplyKey("OFF") end)
-    p.RefreshKey = RefreshKey
+    local macroHint = FS(p, 11, C.dim, "LEFT")
+    macroHint:SetPoint("LEFT", macroChip, "RIGHT", 10, 0)
+    macroHint:SetText(L.black_macro_hint)
 
     local colW = math.floor((CONTENT_W - 12) / 2)
     p.cols = {}
@@ -1373,7 +1319,7 @@ function BuildBlackPanel(host)
             row:SetPoint("TOPRIGHT", -8, -182 - (r - 1) * 20)
             row.label = FS(row, 12, accent, "LEFT")
             row.label:SetPoint("LEFT", 6, 0)
-            row.label:SetPoint("RIGHT", -24, 0)
+            row.label:SetPoint("RIGHT", -52, 0)
             row.label:SetWordWrap(false)
             local x = CreateFrame("Button", nil, row)
             x:SetSize(20, 20)
@@ -1386,6 +1332,19 @@ function BuildBlackPanel(host)
             x:SetScript("OnClick", function()
                 if row.name then WD:RemoveWatch(row.name, kind); if WD.RefreshBlack then WD:RefreshBlack() end end
             end)
+            local m = CreateFrame("Button", nil, row)
+            m:SetSize(28, 20)
+            m:SetPoint("RIGHT", x, "LEFT", -2, 0)
+            m.text = FS(m, 11, C.mute, "CENTER")
+            m.text:SetPoint("CENTER", 0, 0)
+            m:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:SetText(L.black_macro_tip); GameTooltip:Show()
+            end)
+            m:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            m:SetScript("OnClick", function()
+                if row.name then WD:ToggleMacroName(row.name); if WD.RefreshBlack then WD:RefreshBlack() end end
+            end)
+            row.m = m
             row:Hide()
             col.rows[r] = row
         end
@@ -1400,7 +1359,6 @@ function BuildBlackPanel(host)
 
     function WD:RefreshBlack()
         if not p:IsShown() then return end
-        RefreshKey()
         for kind, col in pairs(p.cols) do
             local list = WD:WatchList(kind)
             col.listLbl:SetText(string.format(L.black_list, #list))
@@ -1408,7 +1366,13 @@ function BuildBlackPanel(host)
             for r = 1, LIST_ROWS do
                 local name = list[col.offset + r]
                 local row = col.rows[r]
-                if name then row.name = name; row.label:SetText(name); row:Show() else row.name = nil; row:Hide() end
+                if name then
+                    row.name = name; row.label:SetText(name); row:Show()
+                    local on = WD:InMacro(name)
+                    row.m.text:SetText(on and "M" or "+M")
+                    local c = on and C.green or C.mute
+                    row.m.text:SetTextColor(c[1], c[2], c[3])
+                else row.name = nil; row:Hide() end
             end
             col.empty:SetShown(#list == 0)
             col.more:SetText(#list > LIST_ROWS and L.black_more or "")
@@ -2073,11 +2037,6 @@ SlashCmdList.WATCHDOG = function(msg)
         if WD.ToggleConfig then WD:ToggleConfig() end
     elseif cmd == "premium" or cmd == "lista" or cmd == "watchlist" or cmd == "blacklist" or cmd == "black" then
         WD:Toggle("black")
-    elseif cmd == "alvo" or cmd == "targetkey" or cmd == "target" then
-        local k = strtrim(rest or "")
-        if k ~= "" then WatchdogDB.targetKey = (k:lower() == "off" or k:lower() == "desligar") and "OFF" or k:upper(); WD:UpdateTargetMacro() end
-        local cur = WatchdogDB.targetKey; if cur == nil then cur = "CAPSLOCK" end
-        print("|cffffd100Watchdog:|r " .. string.format(L.msg_targetkey, cur))
     elseif cmd == "nameplates" or cmd == "plaquinhas" or cmd == "alcance" then
         WD:MaxNameplateRange()
         print("|cffffd100Watchdog:|r " .. L.msg_nameplates)
