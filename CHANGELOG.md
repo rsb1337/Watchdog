@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.4
+
+### Novo
+- Botao liga/desliga dos contornos direto na bolsa do jogo: um icone de moeda aparece acima da janela da bolsa aberta (borda verde = ligado, cinza = desligado).
+
 ## 1.7.3
 
 ### Novo

@@ -220,6 +220,7 @@ function WD:ToggleBorders()
     local b = WD:BorderOpt()
     b.on = not b.on
     WD:UpdateBagBorders()
+    if WD.RefreshBagButton then WD:RefreshBagButton() end
     if WD.Refresh then WD:Refresh() end
 end
 
@@ -278,10 +279,64 @@ function WD:UpdateBagBorders()
         for b in pairs(seenButtons) do if b._wdEdge then b._wdEdge:Hide() end end
     end
 end
+-- Botao liga/desliga preso na bolsa do jogo (acima da janela da bolsa que estiver aberta).
+local bagBtn
+local function FirstBagFrame()
+    local c = _G.ContainerFrameCombinedBags
+    if c and c:IsShown() then return c end
+    for i = 1, (NUM_CONTAINER_FRAMES or 13) do
+        local fr = _G["ContainerFrame" .. i]
+        if fr and fr:IsShown() then return fr end
+    end
+    return nil
+end
+local function PaintBagBtn()
+    if not bagBtn then return end
+    local on = WD:BorderOpt().on
+    local c = on and { 0.2, 0.85, 0.3 } or { 0.45, 0.45, 0.5 }
+    for _, t in ipairs(bagBtn.edge) do t:SetColorTexture(c[1], c[2], c[3], 1) end
+    bagBtn.icon:SetDesaturated(not on)
+end
+local function UpdateBagBtn()
+    local fr = FirstBagFrame()
+    if not fr then if bagBtn then bagBtn:Hide() end return end
+    if not bagBtn then
+        bagBtn = CreateFrame("Button", "WatchdogBagBorderButton", UIParent)
+        bagBtn:SetSize(24, 24)
+        bagBtn:SetFrameStrata("HIGH")
+        bagBtn.icon = bagBtn:CreateTexture(nil, "ARTWORK")
+        bagBtn.icon:SetPoint("TOPLEFT", 2, -2); bagBtn.icon:SetPoint("BOTTOMRIGHT", -2, 2)
+        bagBtn.icon:SetTexture("Interface\\Icons\\INV_Misc_Coin_01")
+        bagBtn.edge = {}
+        for i = 1, 4 do bagBtn.edge[i] = bagBtn:CreateTexture(nil, "OVERLAY") end
+        bagBtn.edge[1]:SetPoint("TOPLEFT"); bagBtn.edge[1]:SetPoint("TOPRIGHT"); bagBtn.edge[1]:SetHeight(2)
+        bagBtn.edge[2]:SetPoint("BOTTOMLEFT"); bagBtn.edge[2]:SetPoint("BOTTOMRIGHT"); bagBtn.edge[2]:SetHeight(2)
+        bagBtn.edge[3]:SetPoint("TOPLEFT"); bagBtn.edge[3]:SetPoint("BOTTOMLEFT"); bagBtn.edge[3]:SetWidth(2)
+        bagBtn.edge[4]:SetPoint("TOPRIGHT"); bagBtn.edge[4]:SetPoint("BOTTOMRIGHT"); bagBtn.edge[4]:SetWidth(2)
+        bagBtn:SetScript("OnClick", function() WD:ToggleBorders(); PaintBagBtn() end)
+        bagBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText("Watchdog: " .. L.inv_borders)
+            GameTooltip:AddLine(L.inv_borders_tip, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        bagBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+    if bagBtn._anchor ~= fr then
+        bagBtn:ClearAllPoints()
+        bagBtn:SetPoint("BOTTOMRIGHT", fr, "TOPRIGHT", -4, 2)
+        bagBtn._anchor = fr
+    end
+    bagBtn:Show()
+    PaintBagBtn()
+end
+function WD:RefreshBagButton() pcall(UpdateBagBtn) end
+
 local acc = 0
 f:SetScript("OnUpdate", function(_, el)
     acc = acc + el
     if acc < 0.7 then return end
     acc = 0
+    pcall(UpdateBagBtn)
     if WD:BorderOpt().on then pcall(WD.UpdateBagBorders, WD) end
 end)
