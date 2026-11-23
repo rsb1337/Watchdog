@@ -1734,8 +1734,15 @@ local function CreateMainFrame()
     ui.sortPop = sp
     -- fecha sozinha quando o mouse sai da lista (e do botao Sort) por um instante
     local away = 0
+    local function Over(fr)
+        if fr and fr.IsMouseOver then return fr:IsMouseOver() end
+        if MouseIsOver then return MouseIsOver(fr) end
+        return true      -- sem como saber: nao fecha sozinha (fecha ao escolher ou clicando no Sort)
+    end
     sp:SetScript("OnUpdate", function(self, el)
-        if MouseIsOver(self) or MouseIsOver(ui.sortBtn) then away = 0
+        local ok, over = pcall(function() return Over(self) or Over(ui.sortBtn) end)
+        if not ok then self:SetScript("OnUpdate", nil); return end   -- nunca repetir erro a cada quadro
+        if over then away = 0
         else
             away = away + el
             if away > 0.5 then self:Hide() end

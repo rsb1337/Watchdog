@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.4
+
+### Corrigido
+- Erro de Lua repetido ao abrir a lista do Sort (UI.lua: attempt to call a nil value, contador subindo sem parar): a lista usava uma funcao que o cliente nao tem (MouseIsOver) dentro de um OnUpdate. Agora usa o metodo do proprio frame (IsMouseOver), com protecao: se algo falhar, o fechamento automatico e desligado em vez de repetir o erro a cada quadro.
+
 ## 1.8.3
 
 ### Corrigido
