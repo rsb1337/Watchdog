@@ -610,7 +610,6 @@ end
 -- Item que nao da pra vender de nenhum jeito (nem vendor nem AH): fica "apagado".
 function WD:ItemDimmed(itemID, bound)
     if not itemID then return false end
-    if WD:IsQuestItem(itemID) then return true end
     local _, _, sell = WD:GetItemDisplay(itemID)
     if (tonumber(sell) or 0) > 0 then return false end
     return not WD:CanAuction(itemID, bound)

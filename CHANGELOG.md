@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.12
+
+### Corrigido
+- Itens de quest que tem preco de vendor ou aparecem na Casa de Leiloes (ex.: Evil Bat Eye) deixaram de ficar apagados. Agora so ficam apagados os que nao valem nada em lugar nenhum (sem vendor e sem AH).
+
 ## 1.7.11
 
 ### Novo

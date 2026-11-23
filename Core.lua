@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.7.11"
+WD.version = "1.7.12"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -358,7 +358,11 @@ end
 function WD:CanAuction(itemID, bound)
     if bound then return false end
     local bt, cls = self:ItemBind(itemID)
-    if bt == 1 or bt == 4 or cls == 12 then return false end
+    if bt == 1 then return false end
+    if bt == 4 or cls == 12 then
+        -- item de quest que aparece no scan da AH e negociavel de verdade
+        return (self:AHPrice(itemID)) ~= nil
+    end
     return true
 end
 function WD:IsQuestItem(itemID)
