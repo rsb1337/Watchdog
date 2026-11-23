@@ -1231,14 +1231,24 @@ function BuildBlackPanel(host)
     local keyLbl = FS(p, 11, C.dim, "LEFT")
     keyLbl:SetPoint("TOPLEFT", p, "TOPLEFT", 2, -39)
     keyLbl:SetText(L.black_key)
-    local keyBtn = MakeChip(p, "", 150)
+    local keyBtn = MakeChip(p, "", 100)
     keyBtn:SetPoint("LEFT", keyLbl, "RIGHT", 8, 0)
     local resetChip = MakeChip(p, L.black_key_reset, 62)
     resetChip:SetPoint("LEFT", keyBtn, "RIGHT", 6, 0)
     local offChip = MakeChip(p, L.w_off, 46)
     offChip:SetPoint("LEFT", resetChip, "RIGHT", 6, 0)
+    local macroChip = MakeChip(p, L.black_macro, 96)
+    macroChip:SetPoint("LEFT", offChip, "RIGHT", 6, 0)
+    macroChip:SetScript("OnClick", function()
+        local ok, why = WD:PickupTargetMacro()
+        if ok then
+            print("|cff7ec8ffWatchdog:|r " .. L.black_macro_ok .. (WD.macroDropped and WD.macroDropped > 0 and (" " .. string.format(L.black_macro_cut, WD.macroDropped)) or ""))
+        else
+            print("|cff7ec8ffWatchdog:|r " .. (why == "combat" and L.black_macro_combat or L.black_macro_full))
+        end
+    end)
     local keyStatus = FS(p, 11, C.dim, "LEFT")
-    keyStatus:SetPoint("LEFT", offChip, "RIGHT", 10, 0)
+    keyStatus:SetPoint("LEFT", macroChip, "RIGHT", 8, 0)
     local capturing = false
     local function KeyText()
         local k = WatchdogDB.targetKey

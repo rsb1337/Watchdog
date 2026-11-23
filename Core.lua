@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.6.20"
+WD.version = "1.6.21"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -1275,6 +1275,46 @@ function WD:PickAliveTarget(btn)
     btn:SetAttribute("type", "target")
     btn:SetAttribute("unit", pick)
 end
+-- Macro de verdade (aparece em /macro): o jogador arrasta pra barra. Atualiza sozinha quando a lista muda.
+local MACRO_NAME = "WD Alvo"
+function WD:MacroBody()
+    local names = {}
+    for _, kind in ipairs({ "pve", "pvp" }) do
+        for _, n in ipairs(WD:WatchList(kind)) do names[#names + 1] = n end
+    end
+    local tail = "\n/cleartarget [dead]"
+    local lines, len, dropped = {}, #tail, 0
+    for _, n in ipairs(names) do
+        local line = "/targetexact " .. n
+        if len + #line + 1 > 255 then dropped = dropped + 1
+        else lines[#lines + 1] = line; len = len + #line + 1 end
+    end
+    local rev = {}
+    for i = #lines, 1, -1 do rev[#rev + 1] = lines[i] end
+    if #rev == 0 then return "/cleartarget [dead]", dropped end
+    return table.concat(rev, "\n") .. tail, dropped
+end
+function WD:SyncMacro(create)
+    if InCombatLockdown() or not GetMacroIndexByName then return false end
+    local body, dropped = WD:MacroBody()
+    local idx = GetMacroIndexByName(MACRO_NAME)
+    if not idx or idx == 0 then
+        if not create then return false end
+        local ok, res = pcall(CreateMacro, MACRO_NAME, "INV_Misc_QuestionMark", body, false)
+        if not ok or not res then ok, res = pcall(CreateMacro, MACRO_NAME, "INV_Misc_QuestionMark", body, true) end
+        if not ok or not res then return false end
+    else
+        pcall(EditMacro, idx, nil, nil, body)
+    end
+    WD.macroDropped = dropped
+    return true
+end
+function WD:PickupTargetMacro()
+    if InCombatLockdown() then return false, "combat" end
+    if not WD:SyncMacro(true) then return false, "full" end
+    pcall(PickupMacro, MACRO_NAME)
+    return true
+end
 function WD:UpdateTargetMacro()
     if InCombatLockdown() then WD._targetPending = true; WD.targetKeyState = "pending"; return end
     WD._targetPending = nil
@@ -1312,6 +1352,7 @@ function WD:UpdateTargetMacro()
     else
         WD.targetKeyState = "off"
     end
+    WD:SyncMacro(false)
 end
 
 function WD:WatchList(kind)

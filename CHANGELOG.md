@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.21
+
+### Novo
+- Black list: botao "Pegar macro" cria a macro "WD Alvo" (com /targetexact da lista) e a coloca no cursor para arrastar pra barra. A macro se atualiza sozinha quando a lista muda (fora de combate).
+
 ## 1.6.20
 
 ### Corrigido
