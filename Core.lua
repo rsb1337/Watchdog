@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.6.24"
+WD.version = "1.6.25"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -1256,7 +1256,7 @@ end
 
 -- Macro de verdade (aparece em /macro): o jogador arrasta pra barra. Atualiza sozinha quando a lista muda.
 local MACRO_NAME = "WD Alvo"
-local MACRO_ICON = "Ability_Marksmanship"
+local MACRO_ICON = "Ability_Hunter_EagleEye"
 -- O jogo so aceita icones dele para macro (imagem do addon nao funciona). Poe um icone so quando ainda esta o "?".
 local function IsQuestionIcon(icon)
     return icon == nil or icon == 134400 or tostring(icon):lower():find("questionmark", 1, true) ~= nil
@@ -1300,9 +1300,13 @@ function WD:SyncMacro(create)
         local ok, res = pcall(CreateMacro, MACRO_NAME, MACRO_ICON, body, false)
         if not ok or not res then ok, res = pcall(CreateMacro, MACRO_NAME, MACRO_ICON, body, true) end
         if not ok or not res then return false end
+        if WatchdogDB then WatchdogDB.macroIcon = MACRO_ICON end
     else
         local _, icon = GetMacroInfo(idx)
-        pcall(EditMacro, idx, nil, IsQuestionIcon(icon) and MACRO_ICON or nil, body)
+        -- aplica o icone do addon quando ainda esta "?" ou quando o icone do addon mudou de versao
+        local apply = IsQuestionIcon(icon) or (WatchdogDB and WatchdogDB.macroIcon ~= MACRO_ICON)
+        pcall(EditMacro, idx, nil, apply and MACRO_ICON or nil, body)
+        if apply and WatchdogDB then WatchdogDB.macroIcon = MACRO_ICON end
     end
     WD.macroDropped = dropped
     return true

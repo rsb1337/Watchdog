@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.25
+
+### Alterado
+- Icone da macro "WD Alvo": agora o olho de aguia (Eagle Eye) do jogo. Aplicado uma vez quando o icone do addon muda; depois, trocar em /macro vale.
+
 ## 1.6.24
 
 ### Alterado
