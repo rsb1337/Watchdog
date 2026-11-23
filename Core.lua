@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.7.4"
+WD.version = "1.7.5"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -342,11 +342,34 @@ function WD:AHPrice(itemID)
     local e = d and itemID and d[itemID]
     return e and e.p or nil, e
 end
-function WD:UnitValue(itemID, sell)
+-- Tipo de bind do item (1 = ao pegar, 2 = ao equipar, 3 = ao usar, 4 = quest) e classe (12 = quest).
+local bindCache = {}
+function WD:ItemBind(itemID)
+    local c = bindCache[itemID]
+    if c then return c[1], c[2] end
+    local ok, _, _, _, _, _, _, _, _, _, _, _, classID, _, bindType = pcall(GetItemInfo, itemID)
+    if ok and bindType ~= nil then
+        bindCache[itemID] = { bindType, classID }
+        return bindType, classID
+    end
+    return nil, nil
+end
+-- Pode ser posto na AH? (nao: soulbound, bind ao pegar, item de quest)
+function WD:CanAuction(itemID, bound)
+    if bound then return false end
+    local bt, cls = self:ItemBind(itemID)
+    if bt == 1 or bt == 4 or cls == 12 then return false end
+    return true
+end
+function WD:IsQuestItem(itemID)
+    local bt, cls = self:ItemBind(itemID)
+    return bt == 4 or cls == 12
+end
+function WD:UnitValue(itemID, sell, bound)
     if sell == nil then local _, _, s2 = self:GetItemDisplay(itemID); sell = s2 end
     sell = tonumber(sell) or 0
     local o = AHOpt()
-    if o.on then
+    if o.on and self:CanAuction(itemID, bound) then
         local p = self:AHPrice(itemID)
         if p and p > 0 and sell < (o.pct / 100) * p then return p, true end
     end
@@ -462,7 +485,7 @@ local function ReadSlot(bag, slot)
     if C_Container and C_Container.GetContainerItemInfo then
         local info = C_Container.GetContainerItemInfo(bag, slot)
         if info then
-            return info.iconFileID, info.stackCount or 1, info.quality, info.hyperlink, info.itemID
+            return info.iconFileID, info.stackCount or 1, info.quality, info.hyperlink, info.itemID, info.isBound
         end
         return nil
     end
@@ -480,19 +503,20 @@ local function ScanIDs(self, ids)
     for _, bag in ipairs(ids) do
         local n = GetNumSlots and GetNumSlots(bag) or 0
         for slot = 1, n do
-            local icon, count, quality, link, itemID = ReadSlot(bag, slot)
+            local icon, count, quality, link, itemID, bound = ReadSlot(bag, slot)
             local entry = { bag = bag, slot = slot }
             out.total = out.total + 1
             if icon then
                 itemID = itemID or (link and tonumber(link:match("item:(%d+)")))
                 entry.icon, entry.count, entry.link, entry.itemID = icon, count or 1, link, itemID
+                entry.bound = bound and true or false
                 entry.quality = (quality and quality >= 0) and quality or nil
                 if itemID then
                     local name, q, sell = self:GetItemDisplay(itemID)
                     entry.name = name
                     entry.quality = entry.quality or q
                     entry.sell = sell
-                    local uv, isA = self:UnitValue(itemID, sell)
+                    local uv, isA = self:UnitValue(itemID, sell, bound)
                     entry.value = uv * entry.count
                     entry.src = isA and "a" or "v"
                     out.value = out.value + entry.value
@@ -1599,6 +1623,8 @@ local function Init()
     WatchdogDB.watch = WatchdogDB.watch or {}
     WatchdogDB.ahPrices = WatchdogDB.ahPrices or {}
     AHOpt()
+    -- Regra de valorizacao mudou nesta versao (soulbound = vendor): reajusta o ponto de partida da sessao.
+    if WatchdogDB.valRev ~= 2 then WatchdogDB.valSig = (WatchdogDB.valSig or 0) + 1; WatchdogDB.valRev = 2 end
     WatchdogDB.alerts = WatchdogDB.alerts or {}
     local a = WatchdogDB.alerts
     if a.drop == nil then a.drop = true end

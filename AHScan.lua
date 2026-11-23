@@ -191,8 +191,9 @@ function WD:BorderOpt()
     o.border = o.border or {}
     local b = o.border
     if b.on == nil then b.on = false end
-    b.vk = b.vk or "silver"
-    b.ak = b.ak or "gold"
+    if not b.v2 then b.vk, b.ak, b.v2 = "blue", "orange", true end   -- padrao: vendor azul, AH laranja
+    b.vk = b.vk or "blue"
+    b.ak = b.ak or "orange"
     return b
 end
 local function PaletteColor(key)
@@ -207,14 +208,22 @@ function WD:CycleBorderColor(which)
     b[field] = WD.PALETTE[idx % #WD.PALETTE + 1].key
 end
 -- Cor do contorno de um item (nil = sem contorno).
-function WD:ItemBorderColor(itemID)
+function WD:ItemBorderColor(itemID, bound)
     local b = WD:BorderOpt()
     if not b.on or not itemID then return nil end
     local _, _, sell = WD:GetItemDisplay(itemID)
-    local v, isA = WD:UnitValue(itemID, sell)
+    local v, isA = WD:UnitValue(itemID, sell, bound)
     if isA then return PaletteColor(b.ak) end
     if v and v > 0 then return PaletteColor(b.vk) end
     return nil
+end
+-- Item que nao da pra vender de nenhum jeito (nem vendor nem AH): fica "apagado".
+function WD:ItemDimmed(itemID, bound)
+    if not itemID then return false end
+    if WD:IsQuestItem(itemID) then return true end
+    local _, _, sell = WD:GetItemDisplay(itemID)
+    if (tonumber(sell) or 0) > 0 then return false end
+    return not WD:CanAuction(itemID, bound)
 end
 function WD:ToggleBorders()
     local b = WD:BorderOpt()
@@ -263,8 +272,17 @@ function WD:UpdateBagBorders()
         local ok = pcall(function()
             local bag = b.GetBagID and b:GetBagID() or (b:GetParent() and b:GetParent():GetID())
             local id = b.GetID and b:GetID()
-            local itemID = C_Container and C_Container.GetContainerItemID and bag and id and C_Container.GetContainerItemID(bag, id)
-            local col = on and itemID and WD:ItemBorderColor(itemID) or nil
+            local info = C_Container and C_Container.GetContainerItemInfo and bag and id and C_Container.GetContainerItemInfo(bag, id)
+            local itemID, bound = info and info.itemID, info and info.isBound
+            local icon = b.icon or b.Icon
+            if icon and icon.SetAlpha then
+                if on and itemID and WD:ItemDimmed(itemID, bound) then
+                    icon:SetAlpha(0.3); b._wdDim = true
+                elseif b._wdDim then
+                    icon:SetAlpha(1); b._wdDim = nil
+                end
+            end
+            local col = on and itemID and WD:ItemBorderColor(itemID, bound) or nil
             if col then
                 b._wdEdge = b._wdEdge or Edge(b)
                 for _, t in ipairs(b._wdEdge.t) do t:SetColorTexture(col[1], col[2], col[3], 1) end
@@ -277,6 +295,13 @@ function WD:UpdateBagBorders()
     end
     if not on then
         for b in pairs(seenButtons) do if b._wdEdge then b._wdEdge:Hide() end end
+        for _, b in ipairs(btns) do
+            if b._wdDim then
+                local icon = b.icon or b.Icon
+                if icon and icon.SetAlpha then icon:SetAlpha(1) end
+                b._wdDim = nil
+            end
+        end
     end
 end
 -- Botao liga/desliga preso na bolsa do jogo (acima da janela da bolsa que estiver aberta).

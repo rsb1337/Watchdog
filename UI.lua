@@ -388,7 +388,8 @@ local function SetSlot(i, entry)
         b.icon:Show()
         b.count:SetText((entry.count or 1) > 1 and entry.count or "")
         local qc = entry.quality and entry.quality >= 2 and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[entry.quality]
-        local vc = entry.itemID and WD:ItemBorderColor(entry.itemID)
+        local vc = entry.itemID and WD:ItemBorderColor(entry.itemID, entry.bound)
+        b.icon:SetAlpha((entry.itemID and WD:BorderOpt().on and WD:ItemDimmed(entry.itemID, entry.bound)) and 0.3 or 1)
         if vc then
             Flat(b, C.card, vc, 1)
         elseif qc then

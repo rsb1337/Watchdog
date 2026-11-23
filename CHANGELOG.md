@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.5
+
+### Alterado
+- Itens soulbound (e que sao bind ao pegar) sempre valem o preco de vendor, pois nao podem ir para a AH. BoE entra nas duas regras e vale o maior.
+- Contornos: laranja = vale mais na AH, azul = vale mais no vendor (padrao; as cores continuam configuraveis).
+- Com os contornos ligados, itens que nao podem ser vendidos de nenhum jeito (quest, sem valor de vendor e sem AH) ficam apagados, nas bolsas do jogo e na aba Inventario.
+
 ## 1.7.4
 
 ### Novo
