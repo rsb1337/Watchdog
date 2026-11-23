@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.22
+
+### Novo
+- Macro "WD Alvo": usa o emblema do Watchdog como icone (se o jogo nao aceitar, cai num icone padrao de olho).
+
 ## 1.6.21
 
 ### Novo

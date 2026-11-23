@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.6.21"
+WD.version = "1.6.22"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -1277,6 +1277,17 @@ function WD:PickAliveTarget(btn)
 end
 -- Macro de verdade (aparece em /macro): o jogador arrasta pra barra. Atualiza sozinha quando a lista muda.
 local MACRO_NAME = "WD Alvo"
+local MACRO_ICON = "Interface\\AddOns\\Watchdog\\Media\\emblem_icon"
+local MACRO_ICON_FALLBACK = "INV_Misc_Eye_01"
+-- Tenta o emblema do addon; se o jogo nao aceitar, usa um icone padrao (olho).
+local function SetMacroIcon(idx, body)
+    pcall(EditMacro, idx, nil, MACRO_ICON, body)
+    local ok, _, icon = pcall(GetMacroInfo, idx)
+    local s = ok and icon and tostring(icon):lower() or ""
+    if not s:find("emblem_icon", 1, true) then
+        pcall(EditMacro, idx, nil, MACRO_ICON_FALLBACK, body)
+    end
+end
 function WD:MacroBody()
     local names = {}
     for _, kind in ipairs({ "pve", "pvp" }) do
@@ -1300,9 +1311,11 @@ function WD:SyncMacro(create)
     local idx = GetMacroIndexByName(MACRO_NAME)
     if not idx or idx == 0 then
         if not create then return false end
-        local ok, res = pcall(CreateMacro, MACRO_NAME, "INV_Misc_QuestionMark", body, false)
-        if not ok or not res then ok, res = pcall(CreateMacro, MACRO_NAME, "INV_Misc_QuestionMark", body, true) end
+        local ok, res = pcall(CreateMacro, MACRO_NAME, MACRO_ICON_FALLBACK, body, false)
+        if not ok or not res then ok, res = pcall(CreateMacro, MACRO_NAME, MACRO_ICON_FALLBACK, body, true) end
         if not ok or not res then return false end
+        idx = GetMacroIndexByName(MACRO_NAME)
+        if idx and idx > 0 then SetMacroIcon(idx, body) end
     else
         pcall(EditMacro, idx, nil, nil, body)
     end
