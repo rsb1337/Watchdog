@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.9.0"
+WD.version = "1.9.1"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -1654,10 +1654,13 @@ function WD:SyncMacro(create)
         if not ok or not res then return false end
         if WatchdogDB then WatchdogDB.macroIcon = MACRO_ICON end
     else
-        local _, icon = GetMacroInfo(idx)
+        local _, icon, curBody = GetMacroInfo(idx)
         -- aplica o icone do addon quando ainda esta "?" ou quando o icone do addon mudou de versao
         local apply = IsQuestionIcon(icon) or (WatchdogDB and WatchdogDB.macroIcon ~= MACRO_ICON)
-        pcall(EditMacro, idx, nil, apply and MACRO_ICON or nil, body)
+        -- so mexe na macro quando algo realmente mudou (EditMacro dispara atualizacao das barras de acao)
+        if curBody ~= body or apply then
+            pcall(EditMacro, idx, nil, apply and MACRO_ICON or nil, body)
+        end
         if apply and WatchdogDB then WatchdogDB.macroIcon = MACRO_ICON end
     end
     WD.macroDropped = dropped
@@ -1966,7 +1969,6 @@ ev:SetScript("OnEvent", function(_, event, ...)
         playerGUID = UnitGUID("player")
         petGUID = UnitGUID("pet")
         pcall(WD.SetupAHHooks, WD)
-        pcall(WD.UpdateTargetMacro, WD)
         if arg1 then
             -- Nova sessao a cada login (um /reload mantem a sessao).
             NewSession()

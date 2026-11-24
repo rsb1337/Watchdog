@@ -1168,32 +1168,42 @@ end
 ---------------------------------------------------------------------------
 -- Lista premium: nameplates destacadas + gerenciador
 ---------------------------------------------------------------------------
-local function NameplateNameFS(np)
-    local uf = np and np.UnitFrame
-    if not uf then return nil end
-    if uf.name then return uf.name end
-    if uf.NameText then return uf.NameText end
-    if uf.Name then return uf.Name end
-    -- Fallback: procura o primeiro FontString do frame (nome flutuante).
-    if uf.GetRegions then
-        for _, r in ipairs({ uf:GetRegions() }) do
-            if r and r.GetObjectType and r:GetObjectType() == "FontString" then
-                return r
-            end
-        end
-    end
-    return nil
+-- IMPORTANTE (taint): o addon NAO mexe mais em nenhum frame/texto da Blizzard nas nameplates.
+-- Mexer nelas (SetVertexColor no nome, gancho em CompactUnitFrame_UpdateName) deixava a execucao do
+-- jogo "tainted" e desabilitava a barra de acao em PvP. Agora o destaque e um texto PROPRIO,
+-- num frame do addon, ancorado acima da nameplate.
+local overlays = {}   -- [frame da nameplate] = { f = frame, fs = texto }
+local function GetOverlay(np)
+    local o = overlays[np]
+    if o then return o end
+    local f = CreateFrame("Frame", nil, UIParent)
+    f:SetSize(160, 14)
+    f:SetFrameStrata("BACKGROUND")
+    local fs = FS(f, 11, C.text, "CENTER", "OUTLINE")
+    fs:SetPoint("CENTER", f, "CENTER", 0, 0)
+    o = { f = f, fs = fs }
+    overlays[np] = o
+    return o
 end
 
-function WD:ColorOneNameplate(unit)
+function WD:ColorOneNameplate(unit, np)
     if not unit or not C_NamePlate or not C_NamePlate.GetNamePlateForUnit then return end
-    local np = C_NamePlate.GetNamePlateForUnit(unit)
-    local fs = NameplateNameFS(np)
-    if not fs or not fs.SetVertexColor then return end
+    np = np or C_NamePlate.GetNamePlateForUnit(unit)
+    if not np then return end
     local kind = WD:IsUnitWatched(unit)
+    local o = overlays[np]
     if kind then
+        local name = WD.Clean(UnitName(unit))
+        if type(name) ~= "string" then if o then o.f:Hide() end return end
+        o = o or GetOverlay(np)
         local col = (kind == "pvp") and (WatchdogDB.watchColorPvp or C.purple) or (WatchdogDB.watchColor or C.blue)
-        fs:SetVertexColor(col[1], col[2], col[3])
+        o.fs:SetTextColor(col[1], col[2], col[3])
+        o.fs:SetText(name)
+        o.f:ClearAllPoints()
+        o.f:SetPoint("BOTTOM", np, "TOP", 0, 2)
+        o.f:Show()
+    elseif o then
+        o.f:Hide()
     end
 end
 
@@ -1202,11 +1212,19 @@ function WD:OnNameplateAdded(unit)
 end
 
 function WD:RefreshNameplates()
-    if InCombatLockdown and InCombatLockdown() then return end
     if not C_NamePlate or not C_NamePlate.GetNamePlates then return end
-    for _, np in ipairs(C_NamePlate.GetNamePlates()) do
-        local unit = WD.Clean(np.namePlateUnitToken or (np.UnitFrame and np.UnitFrame.unit))
-        if type(unit) == "string" then pcall(WD.ColorOneNameplate, WD, unit) end
+    local active = {}
+    local ok, list = pcall(C_NamePlate.GetNamePlates)
+    if ok and type(list) == "table" then
+        for _, np in ipairs(list) do
+            active[np] = true
+            local unit = WD.Clean(np.namePlateUnitToken)
+            if type(unit) == "string" then pcall(WD.ColorOneNameplate, WD, unit, np) end
+        end
+    end
+    -- plaquinhas que sumiram (ou foram recicladas): esconde o destaque
+    for np, o in pairs(overlays) do
+        if not active[np] then o.f:Hide() end
     end
 end
 
@@ -1221,7 +1239,8 @@ function WD:MaxNameplateRange()
     end
     WD._cvarPending = false
     local function set(k, v)
-        if GetCVar and GetCVar(k) == tostring(v) then return end
+        local cur = GetCVar and GetCVar(k)
+        if cur ~= nil and tonumber(cur) == tonumber(v) then return end
         pcall(SetCVar, k, v)
     end
     set("nameplateShowEnemies", 1)
@@ -1229,24 +1248,8 @@ function WD:MaxNameplateRange()
     if WD.RefreshNameplates then WD:RefreshNameplates() end
 end
 
--- Mantem a cor mesmo quando a Blizzard reescreve o nome da nameplate.
-local function HookNameplateName()
-    if WD._nameHooked then return end
-    if type(CompactUnitFrame_UpdateName) ~= "function" or not hooksecurefunc then return end
-    hooksecurefunc("CompactUnitFrame_UpdateName", function(frame)
-      pcall(function()
-        if not frame or not frame.unit or not frame.name then return end
-        local unitTok = WD.Clean(frame.unit)
-        if type(unitTok) ~= "string" or not unitTok:find("nameplate", 1, true) then return end
-        local kind = WD:IsUnitWatched(unitTok)
-        if kind and frame.name.SetVertexColor then
-            local col = (kind == "pvp") and (WatchdogDB.watchColorPvp or C.purple) or (WatchdogDB.watchColor or C.blue)
-            frame.name:SetVertexColor(col[1], col[2], col[3])
-        end
-      end)
-    end)
-    WD._nameHooked = true
-end
+-- (removido) O gancho em CompactUnitFrame_UpdateName causava taint; ver comentario acima.
+local function HookNameplateName() end
 
 -- Aba BLACK LIST: duas colunas (PvE / PvP), nomes vistos recentemente e lista.
 local SEEN_ROWS, LIST_ROWS = 4, 8

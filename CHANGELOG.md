@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.9.1
+
+### Corrigido
+- Barra de acao sendo desabilitada em combate (ex.: ao abrir com Cheap Shot em PvP) e o aviso "Interface actions failed because of this AddOn" na lista de AddOns. O log do jogo mostrava "execution tainted by Watchdog" (CompactUnitFrame) seguido de erros de SetCooldown nos botoes da barra. Causas removidas:
+  - O addon nao mexe mais em nada das nameplates da Blizzard (antes: gancho em CompactUnitFrame_UpdateName e troca de cor do nome). O destaque dos nomes da lista agora e um texto proprio do addon, na cor escolhida, colocado acima da nameplate.
+  - A macro "WD Alvo" so e reescrita quando o conteudo realmente mudou (antes era reescrita a cada login/reload, o que fazia o jogo atualizar as barras de acao dentro de codigo do addon).
+  - Os ajustes de alcance das nameplates (CVars) comparam os valores como numero e so sao gravados quando diferem.
+
 ## 1.9.0
 
 ### Novo
