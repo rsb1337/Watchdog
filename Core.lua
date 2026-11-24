@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.8.6"
+WD.version = "1.9.0"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -596,9 +596,10 @@ function WD:AHTotals(sid)
     end
     return price, vendor, va
 end
-local function AHAdd(count, price, vendor, runTime, name, va)
+local function AHAdd(count, price, vendor, runTime, name, va, id)
     if not price or price <= 0 then return end
     local hours = ({ [1] = 12, [2] = 24, [3] = 48 })[runTime] or 48
+    if WD.HistAdd then pcall(WD.HistAdd, WD, { kind = "post", id = id, name = name, count = count or 1, price = price }) end
     local l = AHList()
     l[#l + 1] = { t = time(), sid = WatchdogCharDB.sessionStart, count = count or 1, price = price,
         vendor = vendor or 0, va = va or 0, name = name, exp = time() + hours * 3600 + 3600 }
@@ -741,6 +742,175 @@ local function Diag(msg)
 end
 local function Safe(v) local ok, s = pcall(tostring, v); return ok and s or "?" end
 
+
+---------------------------------------------------------------------------
+-- Historico da AH (conta inteira): compras, vendas, itens postados, expirados e cancelados.
+-- Compras e postagens vem dos hooks; vendas, expirados e cancelados vem do correio.
+---------------------------------------------------------------------------
+local HIST_MAX = 500
+function WD:HistList()
+    if not WatchdogDB then return {} end
+    WatchdogDB.ahHistory = WatchdogDB.ahHistory or {}
+    return WatchdogDB.ahHistory
+end
+function WD:HistAdd(e)
+    if not WatchdogDB or type(e) ~= "table" then return end
+    local l = WD:HistList()
+    e.t = e.t or time()
+    e.char = e.char or UnitName("player")
+    if not e.name and e.id then
+        local ok, n = pcall(GetItemInfo, e.id)
+        if ok and n then e.name = n end
+    end
+    local i = #l + 1
+    l[i] = e
+    while i > 1 and (l[i - 1].t or 0) > e.t do l[i], l[i - 1] = l[i - 1], l[i]; i = i - 1 end
+    while #l > HIST_MAX do table.remove(l, 1) end
+    if WD.RefreshAHTab then pcall(WD.RefreshAHTab, WD) end
+end
+-- Ja existe no historico? (mesma chave e mesmo instante, com tolerancia)
+local function HistHas(k, mexp)
+    for _, e in ipairs(WD:HistList()) do
+        if e.k == k and math.abs((e.mexp or 0) - mexp) < 600 then return true end
+    end
+    return false
+end
+-- Compra feita no proprio jogo (hook) pode ter o mesmo item/preco da fatura do correio: evita duplicar.
+local function HistHasBuy(name, price, t)
+    for _, e in ipairs(WD:HistList()) do
+        if e.kind == "buy" and math.abs((e.t or 0) - t) < 900 and math.abs((e.price or 0) - price) <= math.max(1, price * 0.02)
+            and (not e.name or not name or e.name == name) then
+            if not e.name and name then e.name = name end
+            return true
+        end
+    end
+    return false
+end
+
+local function GlobalPattern(g)
+    if type(g) ~= "string" then return nil end
+    local p = g:gsub("([%^%$%(%)%.%[%]%*%+%-%?])", "%%%1"):gsub("%%%%s", "(.+)"):gsub("%%s", "(.+)")
+    return "^" .. p .. "$"
+end
+
+local mailTimer, invLogged
+local function ScanMailHistory()
+    mailTimer = nil
+    if not (GetInboxNumItems and GetInboxHeaderInfo) then return end
+    local okN, n = pcall(GetInboxNumItems)
+    if not okN or type(n) ~= "number" then return end
+    local now = time()
+    local patExp = GlobalPattern(AUCTION_EXPIRED_MAIL_SUBJECT)
+    local patCan = GlobalPattern(AUCTION_REMOVED_MAIL_SUBJECT)
+    for i = 1, n do
+        local ok, _, _, sender, subject, money, _, days, itemCount = pcall(GetInboxHeaderInfo, i)
+        if ok and type(days) == "number" then
+            local mexp = now + days * 86400
+            local t = math.min(now, mexp - 30 * 86400)
+            if GetInboxInvoiceInfo then
+                local r = { pcall(GetInboxInvoiceInfo, i) }
+                local invType, itemName, who, bid, buyout, deposit, cons = r[2], r[3], r[4], r[5], r[6], r[7], r[8]
+                if r[1] and r[2] and (invLogged or 0) < 8 then
+                    invLogged = (invLogged or 0) + 1
+                    local parts = {}
+                    for j = 2, 13 do parts[#parts + 1] = Safe(r[j]) end
+                    Diag("fatura: " .. table.concat(parts, " | "))
+                end
+                if r[1] and (invType == "seller" or invType == "buyer") and type(itemName) == "string" then
+                    local cnt = tonumber(r[11])
+                    local kind = invType == "seller" and "sell" or "buy"
+                    local price = tonumber(bid) or 0
+                    local k = kind .. "|" .. itemName .. "|" .. price .. "|" .. (UnitName("player") or "")
+                    if kind == "buy" then
+                        -- compra: so entra se o hook nao registrou (por ex. comprada em outra sessao sem o addon)
+                        if not HistHas(k, mexp) and not HistHasBuy(itemName, price, t) then
+                            WD:HistAdd({ kind = "buy", name = itemName, count = cnt, price = price, who = who, t = t, k = k, mexp = mexp })
+                        end
+                    elseif not HistHas(k, mexp) then
+                        WD:HistAdd({ kind = "sell", name = itemName, count = cnt, price = price, fee = tonumber(cons) or 0,
+                            who = who, t = t, k = k, mexp = mexp })
+                    end
+                end
+            end
+            if type(subject) == "string" then
+                local kind, nm
+                if patExp then nm = subject:match(patExp); if nm then kind = "exp" end end
+                if not kind and patCan then nm = subject:match(patCan); if nm then kind = "cancel" end end
+                if kind then
+                    local cnt = tonumber(itemCount) or 1
+                    local k = kind .. "|" .. nm .. "|" .. cnt .. "|" .. (UnitName("player") or "")
+                    if not HistHas(k, mexp) then
+                        WD:HistAdd({ kind = kind, name = nm, count = cnt, price = 0, t = t, k = k, mexp = mexp })
+                    end
+                end
+            end
+        end
+    end
+end
+function WD:QueueMailHistory()
+    if mailTimer then return end
+    mailTimer = true
+    C_Timer.After(0.6, function() pcall(ScanMailHistory) end)
+end
+
+-- Compras: ConfirmCommoditiesPurchase (commodity), PlaceBid (item) e PlaceAuctionBid (API antiga).
+-- O valor pago e o dinheiro que saiu da carteira logo apos a compra.
+local function HistBuyLater(id, name, count, estimate, m0)
+    C_Timer.After(1.2, function()
+        local paid = (m0 or 0) - (GetMoney and GetMoney() or 0)
+        if paid <= 0 then paid = estimate or 0 end
+        if paid > 0 then WD:HistAdd({ kind = "buy", id = id, name = name, count = count, price = paid }) end
+    end)
+end
+local pendingCommodity
+local function OnConfirmCommodity(itemID, quantity)
+    local est = 0
+    local A = C_AuctionHouse
+    if A and A.GetNumCommoditySearchResults and A.GetCommoditySearchResultInfo then
+        local okn, nres = pcall(A.GetNumCommoditySearchResults, itemID)
+        local need = tonumber(quantity) or 0
+        if okn and type(nres) == "number" then
+            for i = 1, nres do
+                if need <= 0 then break end
+                local ok, r = pcall(A.GetCommoditySearchResultInfo, itemID, i)
+                if ok and type(r) == "table" then
+                    local q = math.min(need, tonumber(r.quantity) or 0)
+                    est = est + q * (tonumber(r.unitPrice) or 0); need = need - q
+                end
+            end
+        end
+    end
+    pendingCommodity = { id = itemID, count = tonumber(quantity) or 1, est = est, m0 = GetMoney and GetMoney() or 0, t = GetTime() }
+end
+local function OnPlaceBid(auctionID, bidAmount)
+    local id, name, count
+    local A = C_AuctionHouse
+    if A and A.GetAuctionInfoByID then
+        local ok, info = pcall(A.GetAuctionInfoByID, auctionID)
+        if ok and type(info) == "table" then
+            id = info.itemKey and info.itemKey.itemID
+            count = tonumber(info.quantity)
+        end
+    end
+    HistBuyLater(id, name, count or 1, tonumber(bidAmount), GetMoney and GetMoney() or 0)
+end
+local function OnPlaceAuctionBid(listType, index, bid)
+    local ok, name, _, count, _, _, _, _, _, _, _, _, _, _, _, _, _, itemId = pcall(GetAuctionItemInfo, listType, index)
+    if not ok then name = nil end
+    HistBuyLater(itemId, name, tonumber(count) or 1, tonumber(bid), GetMoney and GetMoney() or 0)
+end
+function WD:OnHistEvent(event)
+    if event == "COMMODITY_PURCHASE_SUCCEEDED" then
+        local pc = pendingCommodity
+        pendingCommodity = nil
+        if pc and GetTime() - pc.t < 120 then HistBuyLater(pc.id, nil, pc.count, pc.est, pc.m0) end
+    elseif event == "COMMODITY_PURCHASE_FAILED" then
+        pendingCommodity = nil
+    elseif event == "MAIL_INBOX_UPDATE" or event == "MAIL_SHOW" then
+        WD:QueueMailHistory()
+    end
+end
+
 local sellCache
 local function UnitVendor(idOrName)
     if not idOrName then return 0 end
@@ -775,7 +945,7 @@ local function OnPostAuction(minBid, buyout, runTime, stackSize, numStacks)
     local per = (tonumber(buyout) and buyout > 0) and buyout or tonumber(minBid) or 0
     local count = stackSize * numStacks
     local unit = s and UnitVendor(s.itemID or s.name) or 0
-    AHAdd(count, per * numStacks, ListV(s and (s.itemID or s.name), count), runTime, s and s.name, ListA(s and (s.itemID or s.name), count))
+    AHAdd(count, per * numStacks, ListV(s and (s.itemID or s.name), count), runTime, s and s.name, ListA(s and (s.itemID or s.name), count), s and s.itemID)
 end
 local function OnPostItemNew(itemLocation, duration, quantity, bid, buyout)
     Diag(string.format("PostItem dur=%s qty=%s bid=%s buyout=%s", Safe(duration), Safe(quantity), Safe(bid), Safe(buyout)))
@@ -786,7 +956,7 @@ local function OnPostItemNew(itemLocation, duration, quantity, bid, buyout)
     end
     quantity = tonumber(quantity) or 1
     local price = (tonumber(buyout) and buyout > 0) and buyout or tonumber(bid) or 0
-    AHAdd(quantity, price, ListV(id, quantity), 3, nil, ListA(id, quantity))
+    AHAdd(quantity, price, ListV(id, quantity), 3, nil, ListA(id, quantity), id)
 end
 local function OnPostCommodity(itemLocation, duration, quantity, unitPrice)
     Diag(string.format("PostCommodity dur=%s qty=%s unit=%s", Safe(duration), Safe(quantity), Safe(unitPrice)))
@@ -796,7 +966,7 @@ local function OnPostCommodity(itemLocation, duration, quantity, unitPrice)
         if ok then id = v end
     end
     quantity = tonumber(quantity) or 1
-    AHAdd(quantity, (tonumber(unitPrice) or 0) * quantity, ListV(id, quantity), 3, nil, ListA(id, quantity))
+    AHAdd(quantity, (tonumber(unitPrice) or 0) * quantity, ListV(id, quantity), 3, nil, ListA(id, quantity), id)
 end
 -- Sincroniza com a lista REAL de leilões do jogador (fonte confiavel): { {id=, count=, price=}, ... }
 function WD:SyncOwned(owned)
@@ -865,10 +1035,12 @@ local diagEvents = {
     "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "AUCTION_OWNED_LIST_UPDATE", "NEW_AUCTION_UPDATE",
     "AUCTION_MULTISELL_START", "AUCTION_MULTISELL_UPDATE", "AUCTION_MULTISELL_FAILURE",
     "OWNED_AUCTIONS_UPDATED", "AUCTION_HOUSE_AUCTION_CREATED", "AUCTION_CANCELED", "AUCTION_HOUSE_POST_ERROR",
-    "AUCTION_HOUSE_POST_WARNING",
+    "AUCTION_HOUSE_POST_WARNING", "COMMODITY_PURCHASE_SUCCEEDED", "COMMODITY_PURCHASE_FAILED", "MAIL_INBOX_UPDATE",
 }
 function WD:OnAuctionEvent(event, ...)
+    if event == "MAIL_INBOX_UPDATE" then pcall(WD.OnHistEvent, WD, event); return end
     Diag(event .. " " .. Safe((...)))
+    if event == "COMMODITY_PURCHASE_SUCCEEDED" or event == "COMMODITY_PURCHASE_FAILED" then pcall(WD.OnHistEvent, WD, event) end
     if event == "AUCTION_HOUSE_SHOW" then
         if GetOwnerAuctionItems then pcall(GetOwnerAuctionItems) end
         if C_AuctionHouse and C_AuctionHouse.QueryOwnedAuctions then pcall(C_AuctionHouse.QueryOwnedAuctions, {}) end
@@ -891,7 +1063,10 @@ function WD:SetupAHHooks()
     if C_AuctionHouse then
         if C_AuctionHouse.PostItem then pcall(hooksecurefunc, C_AuctionHouse, "PostItem", function(...) pcall(OnPostItemNew, ...) end) end
         if C_AuctionHouse.PostCommodity then pcall(hooksecurefunc, C_AuctionHouse, "PostCommodity", function(...) pcall(OnPostCommodity, ...) end) end
+        if C_AuctionHouse.ConfirmCommoditiesPurchase then pcall(hooksecurefunc, C_AuctionHouse, "ConfirmCommoditiesPurchase", function(...) pcall(OnConfirmCommodity, ...) end) end
+        if C_AuctionHouse.PlaceBid then pcall(hooksecurefunc, C_AuctionHouse, "PlaceBid", function(...) pcall(OnPlaceBid, ...) end) end
     end
+    if PlaceAuctionBid then pcall(hooksecurefunc, "PlaceAuctionBid", function(...) pcall(OnPlaceAuctionBid, ...) end) end
     -- APIs disponiveis neste cliente (para diagnostico)
     if WatchdogDB then
         WatchdogDB.ahDiag = WatchdogDB.ahDiag or { api = {}, log = {} }
@@ -1760,6 +1935,7 @@ ev:SetScript("OnEvent", function(_, event, ...)
         ahOpen = false
     elseif event == "MAIL_SHOW" then
         pcall(WD.UpdateBagValue, WD)
+        pcall(WD.QueueMailHistory, WD)
         mailOpen = true
     elseif event == "MAIL_CLOSED" then
         pcall(WD.UpdateBagValue, WD)

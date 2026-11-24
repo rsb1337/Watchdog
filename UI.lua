@@ -2112,7 +2112,7 @@ function BuildAHPanel(host)
 
     local box = CreateFrame("Frame", nil, p, BT)
     box:SetPoint("TOPLEFT", 0, 0)
-    box:SetSize(260, 26)
+    box:SetSize(230, 26)
     Flat(box, C.bg, C.border, 1)
     local eb = CreateFrame("EditBox", nil, box)
     eb:SetAutoFocus(false)
@@ -2193,10 +2193,12 @@ function BuildAHPanel(host)
     rule:SetPoint("TOPLEFT", p, "TOPLEFT", 2, -48)
 
     local hdrY = -68
+    local itemW = {}
     local function Hdr(text, point, x, w, just)
         local h = FS(p, 10, C.mute, just)
         h:SetPoint(point, p, point, x, hdrY)
         h:SetWidth(w); h:SetText(text)
+        itemW[#itemW + 1] = h
     end
     Hdr(L.ah_col_item, "TOPLEFT", 6, 220, "LEFT")
     Hdr(L.ah_col_qty, "TOPRIGHT", -250, 50, "RIGHT")
@@ -2317,15 +2319,216 @@ function BuildAHPanel(host)
         state2.sort = (state2.sort == "name") and "price" or "name"
         Rebuild(); Paint()
     end)
+    ---------------------------------------------------------------------
+    -- Subaba Historico: compras, vendas, postados, expirados e cancelados
+    ---------------------------------------------------------------------
+    local mode = "items"
+    local hp = CreateFrame("Frame", nil, p)
+    hp:SetAllPoints(p)
+    hp:Hide()
+    local H_ROWS = 14
+    local hs = { filter = "all", period = "all", offset = 0, list = {}, buy = 0, sell = 0, fees = 0 }
+    local FILTERS = { "all", "buy", "sell", "post", "exp" }
+    local PERIODS = { "all", "day", "week", "month" }
+    local PSECS = { day = 86400, week = 7 * 86400, month = 30 * 86400 }
+    local KCOL = { buy = "|cffff7a7a", sell = "|cff7aff94", post = "|cffbfbfbf", exp = "|cff8a8a8a", cancel = "|cff8a8a8a" }
+
+    local fChip = MakeChip(hp, "", 160)
+    fChip:SetPoint("TOPLEFT", hp, "TOPLEFT", 0, 0)
+    local pChip = MakeChip(hp, "", 130)
+    pChip:SetPoint("LEFT", fChip, "RIGHT", 6, 0)
+    local hsum = FS(hp, 11, C.dim, "LEFT")
+    hsum:SetPoint("TOPLEFT", hp, "TOPLEFT", 2, -32)
+    local function HHdr(text, point, x, w, just)
+        local h = FS(hp, 10, C.mute, just)
+        h:SetPoint(point, hp, point, x, -52)
+        h:SetWidth(w); h:SetText(text)
+    end
+    HHdr(L.hist_c_date, "TOPLEFT", 6, 86, "LEFT")
+    HHdr(L.hist_c_type, "TOPLEFT", 94, 54, "LEFT")
+    HHdr(L.hist_c_item, "TOPLEFT", 152, 190, "LEFT")
+    HHdr(L.hist_c_qty, "TOPRIGHT", -138, 40, "RIGHT")
+    HHdr(L.hist_c_value, "TOPRIGHT", -4, 130, "RIGHT")
+    local hempty = FS(hp, 12, C.mute, "CENTER")
+    hempty:SetPoint("TOP", hp, "TOP", 0, -120)
+    hempty:SetWidth(430); hempty:SetWordWrap(true)
+
+    local hrows = {}
+    for r = 1, H_ROWS do
+        local row = CreateFrame("Frame", nil, hp)
+        row:SetHeight(20)
+        row:SetPoint("TOPLEFT", hp, "TOPLEFT", 0, -66 - (r - 1) * 21)
+        row:SetPoint("TOPRIGHT", hp, "TOPRIGHT", 0, -66 - (r - 1) * 21)
+        local bg = row:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(C.card[1], C.card[2], C.card[3], (r % 2 == 0) and 0.5 or 0.22)
+        row.date = FS(row, 11, C.dim, "LEFT")
+        row.date:SetPoint("LEFT", 6, 0); row.date:SetWidth(86)
+        row.kind = FS(row, 11, C.text, "LEFT")
+        row.kind:SetPoint("LEFT", 94, 0); row.kind:SetWidth(56)
+        row.name = FS(row, 12, C.text, "LEFT")
+        row.name:SetPoint("LEFT", 152, 0); row.name:SetWidth(190); row.name:SetWordWrap(false)
+        row.qty = FS(row, 11, C.dim, "RIGHT")
+        row.qty:SetPoint("RIGHT", -138, 0); row.qty:SetWidth(40)
+        row.val = FS(row, 11, C.text, "RIGHT")
+        row.val:SetPoint("RIGHT", -4, 0); row.val:SetWidth(130)
+        row:EnableMouse(true)
+        row.hl = row:CreateTexture(nil, "HIGHLIGHT")
+        row.hl:SetAllPoints(); row.hl:SetColorTexture(1, 1, 1, 0.07)
+        row:Hide()
+        hrows[r] = row
+    end
+
+    local function EntryName(e)
+        local name, quality = e.name, nil
+        if e.id then
+            local ok, n, _, q = pcall(GetItemInfo, e.id)
+            if ok and n then name = name or n; quality = q end
+        elseif e.name then
+            local ok, _, _, q = pcall(GetItemInfo, e.name)
+            if ok then quality = q end
+        end
+        if not name then name = e.id and ("#" .. e.id) or "?" end
+        return name, quality
+    end
+    local function HTip(row)
+        local e = row.entry
+        if not e then return end
+        GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+        local shown = false
+        if e.id then
+            if GameTooltip.SetItemByID then shown = pcall(GameTooltip.SetItemByID, GameTooltip, e.id) end
+            if not shown then shown = pcall(GameTooltip.SetHyperlink, GameTooltip, "item:" .. e.id) end
+        elseif e.name then
+            local ok, _, link = pcall(GetItemInfo, e.name)
+            if ok and link then shown = pcall(GameTooltip.SetHyperlink, GameTooltip, link) end
+        end
+        if not shown then GameTooltip:SetText((EntryName(e))) end
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(date("%d/%m/%Y %H:%M", e.t or time()) .. "  -  " .. (L["hist_k_" .. (e.kind or "post")] or ""), 0.8, 0.8, 0.8)
+        if e.kind == "sell" then
+            if e.who then GameTooltip:AddLine(L.hist_tip_buyer .. ": " .. e.who, 0.7, 0.7, 0.7) end
+            GameTooltip:AddLine(L.hist_tip_fee .. ": " .. Coins(e.fee or 0), 0.7, 0.7, 0.7)
+            GameTooltip:AddLine(L.hist_tip_net .. ": " .. Coins(math.max(0, (e.price or 0) - (e.fee or 0))), 0.7, 0.7, 0.7)
+        elseif e.kind == "buy" and e.who then
+            GameTooltip:AddLine(L.hist_tip_seller .. ": " .. e.who, 0.7, 0.7, 0.7)
+        end
+        if e.char then GameTooltip:AddLine(L.hist_tip_char .. ": " .. e.char, 0.55, 0.55, 0.55) end
+        GameTooltip:Show()
+    end
+    for r = 1, H_ROWS do
+        local row = hrows[r]
+        row:SetScript("OnEnter", function(self) self.hover = true; HTip(self) end)
+        row:SetScript("OnLeave", function(self) self.hover = nil; GameTooltip:Hide() end)
+        row:EnableMouseWheel(true)
+        row:SetScript("OnMouseWheel", function(_, delta)
+            local pw = p:GetScript("OnMouseWheel")
+            if pw then pw(p, delta) end
+        end)
+    end
+
+    local function HRebuild()
+        local out, now = {}, time()
+        local lim = PSECS[hs.period]
+        local l = WD:HistList()
+        local buy, sell, fees = 0, 0, 0
+        for i = #l, 1, -1 do
+            local e = l[i]
+            if not lim or now - (e.t or 0) <= lim then
+                if e.kind == "buy" then buy = buy + (e.price or 0)
+                elseif e.kind == "sell" then sell = sell + (e.price or 0); fees = fees + (e.fee or 0) end
+                local f = hs.filter
+                if f == "all" or f == e.kind or (f == "exp" and e.kind == "cancel") then out[#out + 1] = e end
+            end
+        end
+        hs.list, hs.buy, hs.sell, hs.fees = out, buy, sell, fees
+        hs.offset = 0
+    end
+    local function HPaint()
+        fChip.text:SetText(L["hist_f_" .. hs.filter]); fChip:SetActive(hs.filter ~= "all")
+        pChip.text:SetText(L["hist_p_" .. hs.period]); pChip:SetActive(hs.period ~= "all")
+        local bal = hs.sell - hs.fees - hs.buy
+        local balTxt = (bal < 0 and "|cffff7a7a-" or "|cff7aff94") .. Coins(math.abs(bal)) .. "|r"
+        hsum:SetText(string.format(L.hist_sum, Coins(hs.buy), Coins(hs.sell), Coins(hs.fees), balTxt))
+        local n = #hs.list
+        hs.offset = math.max(0, math.min(math.max(0, n - H_ROWS), hs.offset))
+        hempty:SetText(n == 0 and L.hist_empty or "")
+        for r = 1, H_ROWS do
+            local e = hs.list[hs.offset + r]
+            local row = hrows[r]
+            if e then
+                local nm, q = EntryName(e)
+                local yr = (time() - (e.t or 0)) > 300 * 86400
+                row.date:SetText(date(yr and "%d/%m/%y" or "%d/%m %H:%M", e.t or time()))
+                local kind = e.kind or "post"
+                row.kind:SetText((KCOL[kind] or "") .. (L["hist_k_" .. kind] or kind) .. "|r")
+                row.name:SetText(QualityColor(q) .. nm .. "|r")
+                row.qty:SetText(e.count and Num(e.count) or "-")
+                if kind == "exp" or kind == "cancel" or not e.price or e.price <= 0 then
+                    row.val:SetText("-")
+                else
+                    row.val:SetText((KCOL[kind] or "") .. Coins(e.price) .. "|r")
+                end
+                row.entry = e
+                row:Show()
+                if row.hover then HTip(row) end
+            else
+                row.entry = nil
+                if row.hover then row.hover = nil; GameTooltip:Hide() end
+                row:Hide()
+            end
+        end
+    end
+    local function Cycle(list, cur)
+        for i, v in ipairs(list) do if v == cur then return list[i % #list + 1] end end
+        return list[1]
+    end
+    fChip:SetScript("OnClick", function() hs.filter = Cycle(FILTERS, hs.filter); HRebuild(); HPaint() end)
+    pChip:SetScript("OnClick", function() hs.period = Cycle(PERIODS, hs.period); HRebuild(); HPaint() end)
+
+    local subItems = MakeChip(p, L.ah_sub_items, 52)
+    subItems:SetPoint("TOPRIGHT", p, "TOPRIGHT", -78, 0)
+    local subHist = MakeChip(p, L.ah_sub_hist, 74)
+    subHist:SetPoint("TOPRIGHT", p, "TOPRIGHT", 0, 0)
+    local function SetMode(m)
+        mode = m
+        subItems:SetActive(m == "items"); subHist:SetActive(m == "hist")
+        pop:Hide()
+        GameTooltip:Hide()
+        for _, w in ipairs({ box, sortBtn, gear, info, rule }) do w:SetShown(m == "items") end
+        for _, w in ipairs(itemW) do w:SetShown(m == "items") end
+        hp:SetShown(m == "hist")
+        if m == "items" then
+            Rebuild(); Paint()
+        else
+            for r = 1, AH_ROWS do rows[r]:Hide() end
+            HRebuild(); HPaint()
+        end
+    end
+    subItems:SetScript("OnClick", function() SetMode("items") end)
+    subHist:SetScript("OnClick", function() SetMode("hist") end)
+    subItems:SetActive(true)
+
     p:EnableMouseWheel(true)
     p:SetScript("OnMouseWheel", function(_, delta)
-        state2.offset = state2.offset - delta * 3
-        Paint()
+        if mode == "hist" then
+            hs.offset = hs.offset - delta * 3
+            HPaint()
+        else
+            state2.offset = state2.offset - delta * 3
+            Paint()
+        end
     end)
-    p:SetScript("OnShow", function() Rebuild(); Paint() end)
+    p:SetScript("OnShow", function() SetMode(mode) end)
     p:SetScript("OnHide", function() pop:Hide() end)
     function WD:RefreshAHTab()
-        if p:IsShown() then Rebuild(); Paint() end
+        if not p:IsShown() then return end
+        if mode == "hist" then
+            local off = hs.offset
+            HRebuild(); hs.offset = off; HPaint()
+        else
+            Rebuild(); Paint()
+        end
     end
     return p
 end

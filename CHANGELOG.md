@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.9.0
+
+### Novo
+- Aba AH ganhou a subaba Historico (botoes Itens / Historico no canto superior direito). Mostra data, tipo (comprou, vendeu, postou, expirou, cancelou), item, quantidade e valor, do mais novo para o mais antigo, com tooltip do item ao passar o mouse (e, nas vendas, comprador, taxa da AH e quanto voce recebeu).
+- Filtro por tipo (tudo, compras, vendas, postados, expirados/cancelados) e por periodo (tudo, 24h, 7 dias, 30 dias). Acima da lista aparece o total comprado, vendido, taxas e saldo do periodo.
+- Como e gravado: compras e itens postados sao salvos na hora, pelo uso normal da AH. Vendas, expirados e cancelados sao lidos do correio quando voce abre a caixa (inclusive os que ainda estiverem la dos ultimos 30 dias). A data das vendas vem do correio, entao e aproximada.
+- O historico e da conta inteira (todos os personagens), guarda os ultimos 500 registros e comeca a valer a partir desta versao.
+- Diagnostico: as primeiras faturas lidas no correio ficam em WatchdogDB.ahDiag.log, para conferir o formato que o seu cliente entrega.
+
 ## 1.8.6
 
 ### Novo (diagnostico)
