@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.8.5"
+WD.version = "1.8.6"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -638,6 +638,41 @@ end
 local bankOpen, ahOpen, mailOpen = false, false, false
 local lastBags, lastBagsA
 -- Valor de vendor de tudo que e seu: bolsas + banco (ultimo visto) + itens em transito.
+-- Diagnostico do ouro da sessao: guarda em WatchdogDB.goldDiag o que mudou na bolsa e por que um calculo foi ignorado.
+local lastSlotsV = {}
+local function GDiag(msg)
+    local d = WatchdogDB
+    if not d then return end
+    d.goldDiag = d.goldDiag or {}
+    local l = d.goldDiag
+    l[#l + 1] = date("%H:%M:%S ") .. msg
+    while #l > 120 do table.remove(l, 1) end
+end
+local function GDiagSlots(scan, total)
+    local cur, lines = {}, {}
+    for _, e in ipairs(scan.slots or {}) do
+        if e.itemID then
+            local k = (e.bag or "?") .. ":" .. (e.slot or "?")
+            cur[k] = { id = e.itemID, v = e.value or 0, src = e.src or "?", b = e.bound and "B" or "-", n = e.count or 1 }
+        end
+    end
+    for k, n in pairs(cur) do
+        local o = lastSlotsV[k]
+        if not o then lines[#lines + 1] = string.format("+%s id=%d x%d v=%d %s%s", k, n.id, n.n, n.v, n.src, n.b)
+        elseif o.id ~= n.id or math.abs(o.v - n.v) > 0.5 or o.src ~= n.src or o.b ~= n.b then
+            lines[#lines + 1] = string.format("~%s id=%d x%d v=%d->%d %s->%s %s->%s", k, n.id, n.n, o.v, n.v, o.src, n.src, o.b, n.b)
+        end
+    end
+    for k, o in pairs(lastSlotsV) do
+        if not cur[k] then lines[#lines + 1] = string.format("-%s id=%d v=%d", k, o.id, o.v) end
+    end
+    lastSlotsV = cur
+    if #lines > 0 then
+        GDiag(string.format("total=%d", total))
+        for i = 1, math.min(#lines, 12) do GDiag("  " .. lines[i]) end
+    end
+end
+
 function WD:UpdateBagValue()
     local s = WatchdogCharDB and WatchdogCharDB.session
     if not s then return end
@@ -650,10 +685,11 @@ function WD:UpdateBagValue()
     end
     WD._boundUnsure = false
     local scan = self:ScanBags()
-    if scan.pending > 0 then return end
+    if scan.pending > 0 then GDiag("ignorado: " .. scan.pending .. " item(ns) sem preco de vendor no cache"); return end
     if WD._boundUnsure and (WD._unsureTries or 0) < 4 and C_Timer and C_Timer.After then
         -- o jogo ainda nao disse se algum item esta preso: tenta de novo daqui a pouco (ate 4 vezes)
         WD._unsureTries = (WD._unsureTries or 0) + 1
+        GDiag("ignorado: soulbound incerto (tentativa " .. WD._unsureTries .. ")")
         C_Timer.After(2, function() pcall(WD.UpdateBagValue, WD) end)
         return
     end
@@ -679,6 +715,7 @@ function WD:UpdateBagValue()
         s.valSig = sig
     end
     s.bagLast, s.bagLastA = total, totalA
+    pcall(GDiagSlots, scan, total)
     if s.bagStart == nil then s.bagStart = total end
     if s.bagStartA == nil then s.bagStartA = totalA end
 end

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.6
+
+### Novo (diagnostico)
+- Comando /wd goldinfo: mostra no chat como o ouro da sessao esta sendo calculado (moedas ganhas, valor da bolsa no inicio e agora, itens listados na AH).
+- O addon passa a registrar em WatchdogDB.goldDiag cada mudanca no valor da bolsa (item por item, com origem do preco e se esta soulbound) e os motivos de um calculo ser ignorado. Serve para achar por que o ouro da sessao fica em 0.
+
 ## 1.8.5
 
 ### Alterado
