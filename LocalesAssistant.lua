@@ -79,7 +79,7 @@ WD:RegisterLocale("enUS", {
     as_test_buff = "Test: Deadly Poison expires in 60 s",
     as_cc_test = "Test",
     as_place_unknown = "this place",
-    help_config = "  /wd config       - assistant settings (buff, CC, repair, food, consumables)",
+    help_config = "  /wd config       - assistant settings (buff, repair, food, consumables)",
 })
 
 WD:RegisterLocale("ptBR", {
@@ -158,5 +158,5 @@ WD:RegisterLocale("ptBR", {
     as_test_buff = "Teste: Deadly Poison acaba em 60 s",
     as_cc_test = "Teste",
     as_place_unknown = "este local",
-    help_config = "  /wd config       - configurações do assistente (buff, CC, reparo, comida, consumíveis)",
+    help_config = "  /wd config       - configurações do assistente (buff, reparo, comida, consumíveis)",
 })

@@ -108,8 +108,6 @@ local function Build(step)
         local items = {
             { "cfg_sound",     function() return cfg.sound end,        function(v) cfg.sound = v end },
             { "cfg_buffs_on",  function() return cfg.buff.on end,      function(v) cfg.buff.on = v end },
-            { "cfg_cc_on",     function() return cfg.cc.on end,        function(v) cfg.cc.on = v end },
-            { "cfg_dots_on",   function() return cfg.dots.on end,      function(v) cfg.dots.on = v end },
             { "cfg_repair_on", function() return cfg.repair.on end,    function(v) cfg.repair.on = v end },
             { "cfg_food_on",   function() return cfg.food.on end,      function(v) cfg.food.on = v end },
         }

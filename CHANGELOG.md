@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.6
+
+### Removido
+- Timer de CC (icone e tempo sobre o alvo) e fileira de DoTs/debuffs embaixo da nameplate. As duas funcoes rodavam codigo do addon na hora de abrir a luta (Cheap Shot, Garrote) lendo auras e descricoes de magia; saem do addon para essa parte nao tocar mais em dados de combate. Use outro addon para isso. Sai tambem a pagina de CC/DoTs do menu /wd config e as duas opcoes do assistente inicial.
+- Mantidos: avisos de buffs/venenos, reparo, comida e consumiveis.
+
 ## 1.9.5
 
 ### Alterado
