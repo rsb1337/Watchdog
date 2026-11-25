@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.9.9
+
+### Alterado (janela /wd lootgoldbar)
+- O botao Zerar virou "Nova sessao": comeca uma nova sessao de verdade (tempo, ouro, ouro/h e as listas zeram; a sessao anterior vai para o Historico), igual ao botao da janela principal.
+- Os paineis de Itens e de Ouro tem um botao "-" para minimizar, cada um separado. Os botoes "Itens" e "Ouro" no painel da esquerda reabrem. Com os dois minimizados sobra so o quadrado WATCHDOG (tempo, ouro, ouro/h, item mais caro).
+- Cantinho de redimensionar (canto inferior direito): arrastar muda a altura (de 6 a 14 linhas) e a largura do painel de itens (de 220 a 460). Os limites evitam texto e botoes sobrepostos. Tamanho e paineis minimizados sao lembrados.
+
 ## 1.9.8
 
 Base: 1.9.1 (as versoes 1.9.2 a 1.9.7 foram descartadas; nada delas esta aqui).

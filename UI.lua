@@ -1930,9 +1930,10 @@ end
 ---------------------------------------------------------------------------
 -- Janela de loot (/wd lootgoldbar): painel de resumo + lista de itens + lista de ouro, acoplados
 ---------------------------------------------------------------------------
-local LOOT_ROWS, LOOT_RH = 6, 18
-local LOOT_LW, LOOT_IW, LOOT_GW = 178, 252, 118
-local LOOT_H = 26 + LOOT_ROWS * LOOT_RH + 6
+local LOOT_RH = 18
+local LOOT_LW, LOOT_GW = 178, 118
+local LOOT_MINR, LOOT_MAXR = 6, 14          -- linhas visiveis (altura): minimo evita sobrepor os textos do painel esquerdo
+local LOOT_MINIW, LOOT_MAXIW = 220, 460     -- largura do painel de itens
 
 local function LootIcon(id)
     local ic
@@ -1941,36 +1942,53 @@ local function LootIcon(id)
     return ic or "Interface\\Icons\\INV_Misc_QuestionMark"
 end
 
+local function LootCfg()
+    WatchdogDB.bars = WatchdogDB.bars or {}
+    WatchdogDB.bars.loot = WatchdogDB.bars.loot or {}
+    return WatchdogDB.bars.loot
+end
+local function Clamp(v, lo, hi) v = tonumber(v) or lo; if v < lo then return lo elseif v > hi then return hi end return v end
+
 local function CreateLootBar()
     local f = CreateFrame("Frame", "WatchdogBar_loot", UIParent)
-    f:SetSize(LOOT_LW + LOOT_IW + LOOT_GW + 2, LOOT_H)
+    f:SetSize(LOOT_LW + 252 + LOOT_GW + 2, 26 + LOOT_MINR * LOOT_RH + 6)
     local st = WatchdogDB.bars and WatchdogDB.bars.loot
+    -- a janela cresce para a direita/baixo: ancora sempre no canto superior esquerdo
+    local function ToTopLeft()
+        local l, t = f:GetLeft(), f:GetTop()
+        if not l or not t then return end
+        f:ClearAllPoints()
+        f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", l, t)
+    end
     if st and st.pos then
         f:SetPoint(st.pos[1], UIParent, st.pos[2], st.pos[3], st.pos[4])
+        if st.pos[1] ~= "TOPLEFT" and C_Timer and C_Timer.After then C_Timer.After(0, ToTopLeft) end
     else
-        f:SetPoint("TOP", UIParent, "TOP", 0, BAR_DEFS.loot.defaultY)
+        local uw = tonumber(UIParent:GetWidth()) or 1024
+        f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", math.max(20, uw / 2 - 280), BAR_DEFS.loot.defaultY)
     end
     f:SetFrameStrata("MEDIUM")
     f:SetClampedToScreen(true)
     f:SetMovable(true)
 
-    local function Panel(w, anchorTo)
+    local function Panel(anchorTo)
         local p = CreateFrame("Frame", nil, f, BT)
-        p:SetSize(w, LOOT_H)
+        p:SetSize(100, 140)
         if anchorTo then p:SetPoint("TOPLEFT", anchorTo, "TOPRIGHT", 1, 0) else p:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0) end
         Flat(p, C.card, C.border, 0.9)
         p:EnableMouse(true)
         p:RegisterForDrag("LeftButton")
         p:SetScript("OnDragStart", function() f:StartMoving() end)
-        p:SetScript("OnDragStop", function() f:StopMovingOrSizing(); SaveBarState("loot", f) end)
+        p:SetScript("OnDragStop", function() f:StopMovingOrSizing(); ToTopLeft(); SaveBarState("loot", f) end)
         p:SetScript("OnMouseUp", function(_, button)
             if button == "RightButton" then f:Hide(); SaveBarState("loot", f) end
         end)
         return p
     end
-    local left = Panel(LOOT_LW)
-    local ipan = Panel(LOOT_IW, left)
-    local gpan = Panel(LOOT_GW, ipan)
+    local left = Panel()
+    local ipan = Panel(left)
+    local gpan = Panel(ipan)
+    left:SetSize(LOOT_LW, 140)
 
     local acc = left:CreateTexture(nil, "ARTWORK")
     acc:SetPoint("TOPLEFT", 1, -1); acc:SetPoint("BOTTOMLEFT", 1, 1); acc:SetWidth(3)
@@ -1996,22 +2014,36 @@ local function CreateLootBar()
     if vBest.SetWordWrap then vBest:SetWordWrap(false) end
     local vBestVal = FS(left, 11, C.text, "RIGHT")
     vBestVal:SetPoint("TOPRIGHT", -8, -(26 + 54))
-    local reset = CreateFrame("Button", nil, left, BT)
-    reset:SetSize(52, 16)
-    reset:SetPoint("BOTTOMRIGHT", -6, 5)
-    Flat(reset, C.tile, C.border, 1)
-    reset.text = FS(reset, 10, C.dim, "CENTER"); reset.text:SetPoint("CENTER"); reset.text:SetText(L.loot_reset)
-    reset:SetScript("OnClick", function() WD:FeedClear() end)
+
+    local function SmallBtn(parent, text, w)
+        local b = CreateFrame("Button", nil, parent, BT)
+        b:SetSize(w, 16)
+        b:SetFrameLevel((tonumber(parent:GetFrameLevel()) or 5) + 3)
+        b:EnableMouse(true)
+        b:RegisterForClicks("LeftButtonUp")
+        Flat(b, C.tile, C.border, 1)
+        b.text = FS(b, 10, C.dim, "CENTER"); b.text:SetPoint("CENTER"); b.text:SetText(text)
+        return b
+    end
+    local newBtn = SmallBtn(left, L.chip_newsession, 74)
+    newBtn:SetPoint("BOTTOMRIGHT", -6, 5)
+    newBtn:SetScript("OnClick", function() WD:StartNewSession(); if f.Paint then f.Paint() end end)
+    local tgItems = SmallBtn(left, L.loot_items_h, 36)
+    tgItems:SetPoint("BOTTOMLEFT", 8, 5)
+    local tgGold = SmallBtn(left, L.loot_gold_h, 34)
+    tgGold:SetPoint("LEFT", tgItems, "RIGHT", 3, 0)
 
     -- painel de itens
     local ih = FS(ipan, 11, C.dim, "LEFT"); ih:SetPoint("TOPLEFT", 10, -7); ih:SetText(L.loot_items_h)
+    local minItems = SmallBtn(ipan, "-", 16)
+    minItems:SetPoint("TOPRIGHT", -4, -4)
     local irows = {}
-    for r = 1, LOOT_ROWS do
+    for r = 1, LOOT_MAXR do
         local row = CreateFrame("Button", nil, ipan)
-        row:SetSize(LOOT_IW - 8, LOOT_RH)
+        row:SetSize(244, LOOT_RH)
         row:SetPoint("TOPLEFT", 4, -(24 + (r - 1) * LOOT_RH))
         row.icon = row:CreateTexture(nil, "ARTWORK"); row.icon:SetSize(14, 14); row.icon:SetPoint("LEFT", 2, 0)
-        row.name = FS(row, 11, C.text, "LEFT"); row.name:SetPoint("LEFT", 20, 0); row.name:SetWidth(LOOT_IW - 8 - 20 - 84)
+        row.name = FS(row, 11, C.text, "LEFT"); row.name:SetPoint("LEFT", 20, 0); row.name:SetWidth(140)
         if row.name.SetWordWrap then row.name:SetWordWrap(false) end
         row.val = FS(row, 11, C.text, "RIGHT"); row.val:SetPoint("RIGHT", -16, 0)
         local x = CreateFrame("Button", nil, row)
@@ -2036,25 +2068,103 @@ local function CreateLootBar()
 
     -- painel de ouro
     local gh = FS(gpan, 11, C.dim, "LEFT"); gh:SetPoint("TOPLEFT", 10, -7); gh:SetText(L.loot_gold_h)
-    local gtot = FS(gpan, 11, C.text, "RIGHT"); gtot:SetPoint("TOPRIGHT", -8, -7)
+    local minGold = SmallBtn(gpan, "-", 16)
+    minGold:SetPoint("TOPRIGHT", -4, -4)
+    local gtot = FS(gpan, 11, C.text, "RIGHT"); gtot:SetPoint("TOPRIGHT", -24, -7)
     local grows = {}
-    for r = 1, LOOT_ROWS do
+    for r = 1, LOOT_MAXR do
         local fs = FS(gpan, 11, C.text, "RIGHT")
         fs:SetPoint("TOPRIGHT", -8, -(28 + (r - 1) * LOOT_RH))
         grows[r] = fs
     end
 
+    -- ---- layout: altura (linhas), largura do painel de itens e paineis recolhidos ----
+    local function PaintToggles(c)
+        local function one(b, hidden)
+            if hidden then Flat(b, C.tile, C.border, 1); b.text:SetTextColor(C.mute[1], C.mute[2], C.mute[3])
+            else Flat(b, C.tile, C.gold, 1); b.text:SetTextColor(1, 1, 1) end
+        end
+        one(tgItems, c.hideItems); one(tgGold, c.hideGold)
+    end
+    local function Layout()
+        local c = LootCfg()
+        c.rows = Clamp(c.rows or LOOT_MINR, LOOT_MINR, LOOT_MAXR)
+        c.iw = Clamp(c.iw or 252, LOOT_MINIW, LOOT_MAXIW)
+        local H = 26 + c.rows * LOOT_RH + 6
+        left:SetSize(LOOT_LW, H)
+        ipan:SetSize(c.iw, H); gpan:SetSize(LOOT_GW, H)
+        ipan:SetShown(not c.hideItems)
+        gpan:SetShown(not c.hideGold)
+        gpan:ClearAllPoints()
+        gpan:SetPoint("TOPLEFT", (not c.hideItems) and ipan or left, "TOPRIGHT", 1, 0)
+        local w = LOOT_LW + ((not c.hideItems) and (c.iw + 1) or 0) + ((not c.hideGold) and (LOOT_GW + 1) or 0)
+        f:SetSize(w, H)
+        for r = 1, LOOT_MAXR do
+            local row = irows[r]
+            row:SetWidth(c.iw - 8)
+            row.name:SetWidth(c.iw - 8 - 20 - 84)
+        end
+        PaintToggles(c)
+        if f.Paint then f.Paint() end
+    end
+    local function Toggle(key)
+        local c = LootCfg(); c[key] = not c[key] or nil
+        Layout(); SaveBarState("loot", f)
+    end
+    minItems:SetScript("OnClick", function() Toggle("hideItems") end)
+    minGold:SetScript("OnClick", function() Toggle("hideGold") end)
+    tgItems:SetScript("OnClick", function() Toggle("hideItems") end)
+    tgGold:SetScript("OnClick", function() Toggle("hideGold") end)
+
+    -- cantinho de redimensionar (canto inferior direito da janela)
+    local grip = CreateFrame("Frame", nil, f)
+    grip:SetSize(14, 14)
+    grip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
+    grip:SetFrameLevel((tonumber(f:GetFrameLevel()) or 5) + 10)
+    grip:EnableMouse(true)
+    for _, d in ipairs({ {0,0},{-4,0},{-8,0},{0,4},{-4,4},{0,8} }) do
+        local t = grip:CreateTexture(nil, "OVERLAY")
+        t:SetSize(2, 2); t:SetPoint("BOTTOMRIGHT", d[1] - 2, d[2] + 2)
+        t:SetColorTexture(C.dim[1], C.dim[2], C.dim[3], 0.9)
+    end
+    local sizing
+    grip:SetScript("OnMouseDown", function(_, button)
+        if button ~= "LeftButton" then return end
+        ToTopLeft()
+        local c = LootCfg()
+        local x, y = GetCursorPosition()
+        local sc = tonumber(f:GetEffectiveScale()) or 1
+        sizing = { x = x / sc, y = y / sc, rows = c.rows or LOOT_MINR, iw = c.iw or 252 }
+    end)
+    grip:SetScript("OnMouseUp", function()
+        if sizing then sizing = nil; SaveBarState("loot", f) end
+    end)
+    grip:SetScript("OnUpdate", function()
+        if not sizing then return end
+        local x, y = GetCursorPosition()
+        local sc = tonumber(f:GetEffectiveScale()) or 1
+        x, y = x / sc, y / sc
+        local c = LootCfg()
+        local rows = Clamp(sizing.rows + math.floor((sizing.y - y) / LOOT_RH + 0.5), LOOT_MINR, LOOT_MAXR)
+        local iw = c.iw or 252
+        if not c.hideItems then iw = math.floor(Clamp(sizing.iw + (x - sizing.x), LOOT_MINIW, LOOT_MAXIW)) end
+        if rows ~= c.rows or iw ~= c.iw then c.rows, c.iw = rows, iw; Layout() end
+    end)
+
     local best = nil
     local function Paint()
         if not (WatchdogCharDB and WatchdogCharDB.session) then return end
+        local c = LootCfg()
+        local nrows = c.rows or LOOT_MINR
         local start = WatchdogCharDB.sessionStart
         vTime:SetText(start and FormatClock(time() - start) or "00:00:00")
         local perHour, total = SessionGoldPerHour()
         vGold:SetText(Coins(total))
         vGph:SetText(Coins(perHour))
         local feed = WD:LootFeed() or { items = {}, gold = {}, goldTotal = 0 }
+        local inCombat = InCombatLockdown and InCombatLockdown()
         -- item mais caro (valor unitario): so recalcula fora de combate
-        if not (InCombatLockdown and InCombatLockdown()) then
+        if not inCombat then
             local bid, bv = feed.best, 0
             if bid then bv = tonumber((WD:UnitValue(bid))) or 0 end
             for _, e in ipairs(feed.items) do
@@ -2071,33 +2181,35 @@ local function CreateLootBar()
         else
             vBest:SetText(Gray(L.loot_none)); vBestVal:SetText("")
         end
-        for r = 1, LOOT_ROWS do
-            local e, row = feed.items[r], irows[r]
+        for r = 1, LOOT_MAXR do
+            local e, row = (r <= nrows) and feed.items[r] or nil, irows[r]
             if e then
                 local nm, q, sell = WD:GetItemDisplay(e.id)
                 row.idx, row.itemID = r, e.id
                 row.icon:SetTexture(LootIcon(e.id))
                 row.name:SetText(White((e.n or 1) .. "x ") .. QualityColor(q) .. "[" .. nm .. "]|r")
-                local unit = (InCombatLockdown and InCombatLockdown()) and (tonumber(sell) or 0) or (tonumber((WD:UnitValue(e.id))) or 0)
+                local unit = inCombat and (tonumber(sell) or 0) or (tonumber((WD:UnitValue(e.id))) or 0)
                 row.val:SetText(Coins(unit * (e.n or 1)))
                 row:Show()
             else
                 row.idx, row.itemID = nil, nil
                 row:Hide()
             end
-            local g = feed.gold[r]
+            local g = (r <= nrows) and feed.gold[r] or nil
             grows[r]:SetText(g and Coins(g.c) or "")
         end
         gtot:SetText(Coins(feed.goldTotal or 0))
     end
     f.Paint = Paint
+    f.Layout = Layout
 
     local tick = 0
     f:SetScript("OnUpdate", function(_, el)
         tick = tick + el
         if tick >= 1 then tick = 0; Paint() end
     end)
-    f:SetScript("OnShow", Paint)
+    f:SetScript("OnShow", Layout)
+    Layout()
     f:Hide()
     bars.loot = f
     return f
