@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.2
+
+### Alterado
+- Black list: o nome do mob na nameplate volta a ser pintado na cor escolhida, no proprio nome da Blizzard (o texto separado acima da nameplate da 1.9.1 foi removido). O que continua removido e o gancho em CompactUnitFrame_UpdateName: a cor agora e refeita a cada 0.5s e quando a nameplate aparece, inclusive em combate, e o addon so encosta numa nameplate quando o mob esta na lista.
+
 ## 1.9.1
 
 ### Corrigido
