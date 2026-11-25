@@ -515,6 +515,8 @@ end
 
 -- Retorna dur, exp, status: "ok" (achou e leu), "missing" (leu tudo e nao achou), "unreadable"
 local function ReadDebuff(unit, name)
+    -- em combate o addon nao consulta auras (dados secretos / taint): usa a duracao estimada
+    if InCombatLockdown and InCombatLockdown() then return nil, nil, "unreadable" end
     local unreadable = false
     for i = 1, 40 do
         local n, _, dur, exp, src, ok = AuraAt(unit, i, "HARMFUL")
@@ -657,6 +659,7 @@ end
 
 -- Duracao lida do tooltip da magia (o spellID do evento ja e o rank que voce conhece).
 local function SpellDesc(id)
+    if InCombatLockdown and InCombatLockdown() then return nil end   -- usa a duracao padrao em combate
     local d
     if C_Spell and C_Spell.GetSpellDescription then
         local ok, v = pcall(C_Spell.GetSpellDescription, id)
@@ -864,7 +867,9 @@ local function DotsUpdate()
         elseif UnitExists("target") and UnitCanAttack("player", "target") and not UnitIsDead("target") and #defs > 0 then
             local g = Clean(UnitGUID("target"))
             local found, unreadable = {}, false
-            for i = 1, 40 do
+            local inCombat = InCombatLockdown and InCombatLockdown()
+            if inCombat then unreadable = true end   -- em combate: so a estimativa por cast
+            for i = 1, (inCombat and 0 or 40) do
                 local n, icon, dur, exp, src, ok = AuraAt("target", i, "HARMFUL")
                 if not ok then break end
                 if type(n) ~= "string" then

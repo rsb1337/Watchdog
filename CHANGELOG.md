@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.5
+
+### Alterado
+- CC e DoTs em combate: o addon nao consulta mais as auras do alvo nem a descricao das magias enquanto voce esta em combate (ex.: ao abrir com Garrote ou Cheap Shot). Os timers usam a duracao estimada pelo cast, como ja faziam quando o jogo esconde as auras. Fora de combate continua lendo o tempo real. Objetivo: o Watchdog nao tocar em dados de combate (secretos) que quebram a barra de acao.
+
 ## 1.9.4
 
 ### Alterado
