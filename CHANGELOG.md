@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.10
+
+### Corrigido
+- Aba PvE: o detalhe de um mob mostrava um valor diferente da lista (ex.: 4g 43s contra 28g 31s). O detalhe somava so o preco de vendor, enquanto a lista usa vendor ou preco da AH (quando o vendor vale menos de 80% da AH). Agora o detalhe usa o mesmo criterio: cada item mostra o valor que conta, com a marca "AH" quando vem do preco da AH, e o "vale" e o "Total (itens + ouro)" batem com a lista.
+
 ## 1.9.9
 
 ### Alterado (janela /wd lootgoldbar)

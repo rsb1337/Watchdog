@@ -529,9 +529,12 @@ local function RenderPvE(data)
                 right = right .. "  " .. Hex(col) .. string.format("%.0f%%", rate) .. "|r"
             end
 
-            if sell and sell > 0 then
-                itemsValue = itemsValue + sell * qty
-                right = right .. "   " .. Coins(sell * qty)
+            -- mesmo criterio da lista: vendor, ou preco da AH quando o vendor vale bem menos
+            local unit, viaAH = WD:UnitValue(id, sell)
+            unit = tonumber(unit) or 0
+            if unit > 0 then
+                itemsValue = itemsValue + unit * qty
+                right = right .. "   " .. (viaAH and Gray("AH ") or "") .. Coins(unit * qty)
             elseif sell == 0 then
                 right = right .. "   " .. Gray(L.no_value)
             end
