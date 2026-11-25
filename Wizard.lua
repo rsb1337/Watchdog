@@ -148,7 +148,7 @@ local function Build(step)
     local skip = MakeChip(f, L.w_skip, 80)
     skip:SetPoint("BOTTOMLEFT", 24, 20)
     local back = MakeChip(f, L.w_back, 90)
-    back:SetPoint("BOTTOMRIGHT", -24 - 100, 20)
+    back:SetPoint("BOTTOMRIGHT", -24 - 120 - 10, 20)
     local nxt = MakeChip(f, L.w_next, 120)
     nxt:SetPoint("BOTTOMRIGHT", -24, 20)
 

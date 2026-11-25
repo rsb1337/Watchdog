@@ -362,7 +362,7 @@ local function ScanPoisons()
 end
 
 ---------------------------------------------------------------------------
--- (Timer de CC e DoTs acima do alvo foram removidos na 1.9.6: use outro addon para isso.)
+-- (Timer de CC e DoTs acima do alvo foram removidos na 1.9.8: use outro addon para isso.)
 ---------------------------------------------------------------------------
 local function ClassFile()
     local ok, _, c = pcall(UnitClass, "player")
@@ -1384,7 +1384,7 @@ end
 local cmdF
 local CMD_KEYS = { "help_open", "help_config", "help_new", "help_report", "help_hist", "help_cons", "help_session", "help_wizard", "help_inv", "help_alerts",
     "help_premium", "help_watch", "help_unwatch", "help_nameplates", "help_minimap", "help_goldbar", "help_expbar",
-    "help_sgoldbar", "help_igoldbar", "help_lang", "help_status", "help_debug" }
+    "help_sgoldbar", "help_igoldbar", "help_lootgoldbar", "help_lang", "help_status", "help_debug" }
 
 local function BuildCommands()
     local K = WD.UIKit

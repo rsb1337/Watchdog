@@ -1,35 +1,22 @@
 # Changelog
 
-## 1.9.7
+## 1.9.8
+
+Base: 1.9.1 (as versoes 1.9.2 a 1.9.7 foram descartadas; nada delas esta aqui).
+
+### Novo
+- `/wd lootgoldbar` (ou `/wdlootgoldbar`): janela estilo MoneyLooter com tempo, ouro da sessao, ouro/h e item mais caro, mais duas listas acopladas: itens recebidos (icone, quantidade, valor, x para remover) e ouro recebido. Arraste para mover, botao direito fecha, botao Zerar limpa as listas.
+- Botao "ouro do loot" na aba Atalhos.
+
+### Alterado
+- Aba Historico (Auction House): os filtros de tipo e periodo agora abrem uma lista para escolher direto, em vez de trocar a cada clique.
 
 ### Corrigido
-- Erro Lua "attempt to call a nil value" (UI.lua) ao passar o mouse nos itens da aba Auction House. O addon usava a funcao global GetItemInfo, que este cliente nao tem (so existe C_Item.GetItemInfo). Antes ela podia vir de outro addon; sem eles, quebrava. Agora o Watchdog usa a funcao certa do cliente e nao depende de nenhum outro addon.
-
-## 1.9.6
+- Erro Lua "attempt to call a nil value" ao passar o mouse nos itens da aba Auction House: o addon usava a funcao global GetItemInfo, que este cliente nao tem (so C_Item.GetItemInfo). Agora usa a funcao certa e nao depende de outro addon.
+- Wizard: os botoes Voltar e Proximo ficavam um em cima do outro.
 
 ### Removido
-- Timer de CC (icone e tempo sobre o alvo) e fileira de DoTs/debuffs embaixo da nameplate. As duas funcoes rodavam codigo do addon na hora de abrir a luta (Cheap Shot, Garrote) lendo auras e descricoes de magia; saem do addon para essa parte nao tocar mais em dados de combate. Use outro addon para isso. Sai tambem a pagina de CC/DoTs do menu /wd config e as duas opcoes do assistente inicial.
-- Mantidos: avisos de buffs/venenos, reparo, comida e consumiveis.
-
-## 1.9.5
-
-### Alterado
-- CC e DoTs em combate: o addon nao consulta mais as auras do alvo nem a descricao das magias enquanto voce esta em combate (ex.: ao abrir com Garrote ou Cheap Shot). Os timers usam a duracao estimada pelo cast, como ja faziam quando o jogo esconde as auras. Fora de combate continua lendo o tempo real. Objetivo: o Watchdog nao tocar em dados de combate (secretos) que quebram a barra de acao.
-
-## 1.9.4
-
-### Alterado
-- Modo quieto em combate: durante o combate o addon nao le mais as bolsas (valor/soulbound por tooltip), nao atualiza os contornos e botoes da bolsa e nao acrescenta a linha de preco nos tooltips de item. Tudo isso e refeito assim que o combate termina (o gold da sessao e atualizado ao sair do combate). Objetivo: eliminar qualquer chance do Watchdog interferir na barra de acao durante lutas (erros "SetCooldown ... secret values ... untainted execution").
-
-## 1.9.3
-
-### Corrigido
-- Black list: o nome do mob na nameplate piscava entre azul e branco (a Blizzard reescreve o nome em branco e a cor so era refeita a cada 0.5s). Agora a cor dos nomes que estao na lista e refeita a cada quadro, so nessas nameplates; as demais continuam sem ser tocadas.
-
-## 1.9.2
-
-### Alterado
-- Black list: o nome do mob na nameplate volta a ser pintado na cor escolhida, no proprio nome da Blizzard (o texto separado acima da nameplate da 1.9.1 foi removido). O que continua removido e o gancho em CompactUnitFrame_UpdateName: a cor agora e refeita a cada 0.5s e quando a nameplate aparece, inclusive em combate, e o addon so encosta numa nameplate quando o mob esta na lista.
+- Timer de CC (icone e tempo sobre o alvo) e fileira de DoTs/debuffs embaixo da nameplate, com suas configuracoes e textos. Use outro addon para isso.
 
 ## 1.9.1
 

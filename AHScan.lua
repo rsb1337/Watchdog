@@ -442,7 +442,7 @@ end
 
 if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tt, data)
-        if data and data.id and not (InCombatLockdown and InCombatLockdown()) then pcall(AddTag, tt, data.id) end
+        if data and data.id then pcall(AddTag, tt, data.id) end
     end)
 else
     local function hook(tt)
@@ -868,7 +868,6 @@ f:SetScript("OnUpdate", function(_, el)
     acc = acc + el
     if acc < 0.7 then return end
     acc = 0
-    if InCombatLockdown and InCombatLockdown() then return end   -- quieto em combate
     pcall(UpdateBagBtn)
     if WD:BorderOpt().on then pcall(WD.UpdateBagBorders, WD) end
 end)

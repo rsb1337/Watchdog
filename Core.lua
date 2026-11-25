@@ -4,7 +4,7 @@
 local ADDON, WD = ...
 local function GetItemInfo(...) local f = _G.GetItemInfo or (C_Item and C_Item.GetItemInfo); if f then return f(...) end end
 local L = WD.L
-WD.version = "1.9.7"
+WD.version = "1.9.8"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -678,9 +678,6 @@ end
 function WD:UpdateBagValue()
     local s = WatchdogCharDB and WatchdogCharDB.session
     if not s then return end
-    -- Em combate o addon fica quieto: a leitura das bolsas usa tooltips e itens, e o jogo trata
-    -- dados de combate como "secretos". Refaz quando o combate acabar.
-    if InCombatLockdown and InCombatLockdown() then WD._bagPending = true; return end
     if bankOpen then
         local bank = self:ScanBank()
         if bank.pending == 0 and bank.total > 0 then
@@ -1549,6 +1546,7 @@ local function OnMoneyMessage(msg)
     end
     local name = (lastLootName and GetTime() - lastLootTime <= MONEY_WINDOW) and lastLootName or nil
     Dbg("Dinheiro:", copper, name or "(sem mob)")
+    if WD.FeedGold then pcall(WD.FeedGold, WD, copper) end
     Each(function(b)
         b.money = (b.money or 0) + copper
         if name then
@@ -1557,6 +1555,85 @@ local function OnMoneyMessage(msg)
         end
     end)
     WD:Refresh()
+end
+
+---------------------------------------------------------------------------
+-- Feed de loot da sessao (janela /wd lootgoldbar): itens e ouro recebidos
+---------------------------------------------------------------------------
+local FEED_MAX = 40
+local function Feed()
+    local c = WatchdogCharDB
+    if not c then return nil end
+    local f = c.lootFeed
+    if not f or f.sid ~= c.sessionStart then
+        f = { sid = c.sessionStart, items = {}, gold = {}, goldTotal = 0 }
+        c.lootFeed = f
+    end
+    return f
+end
+function WD:LootFeed() return Feed() end
+
+local function FeedPoke() if WD.RefreshLootBar then pcall(WD.RefreshLootBar, WD) end end
+
+function WD:FeedGold(copper)
+    local f = Feed()
+    copper = tonumber(copper)
+    if not f or not copper or copper <= 0 then return end
+    table.insert(f.gold, 1, { t = time(), c = copper })
+    while #f.gold > FEED_MAX do table.remove(f.gold) end
+    f.goldTotal = (f.goldTotal or 0) + copper
+    FeedPoke()
+end
+
+function WD:FeedItem(itemID, qty)
+    local f = Feed()
+    itemID = tonumber(itemID)
+    if not f or not itemID then return end
+    qty = math.max(1, tonumber(qty) or 1)
+    local now = time()
+    local top = f.items[1]
+    if top and top.id == itemID and now - (top.t or 0) <= 4 then
+        top.n = (top.n or 1) + qty; top.t = now
+    else
+        table.insert(f.items, 1, { t = now, id = itemID, n = qty })
+        while #f.items > FEED_MAX do table.remove(f.items) end
+    end
+    FeedPoke()
+end
+
+function WD:FeedClear()
+    local c = WatchdogCharDB
+    if c then c.lootFeed = nil end
+    FeedPoke()
+end
+
+local lootPats
+local function LootPatterns()
+    if lootPats then return lootPats end
+    lootPats = {}
+    for _, g in ipairs({ "LOOT_ITEM_SELF_MULTIPLE", "LOOT_ITEM_PUSHED_SELF_MULTIPLE" }) do
+        local p = _G[g] and GlobalPattern(_G[g])
+        if p then lootPats[#lootPats + 1] = { p, true } end
+    end
+    for _, g in ipairs({ "LOOT_ITEM_SELF", "LOOT_ITEM_PUSHED_SELF" }) do
+        local p = _G[g] and GlobalPattern(_G[g])
+        if p then lootPats[#lootPats + 1] = { p, false } end
+    end
+    return lootPats
+end
+
+-- "You receive loot: [Item]x5." (so as suas; mensagens de outros jogadores nao casam)
+local function OnLootMessage(msg)
+    msg = Clean(msg)
+    if type(msg) ~= "string" then return end
+    for _, e in ipairs(LootPatterns()) do
+        local a, b = msg:match(e[1])
+        if a then
+            local id = tonumber(a:match("item:(%d+)"))
+            if id then WD:FeedItem(id, e[2] and tonumber(b) or 1) end
+            return
+        end
+    end
 end
 
 ---------------------------------------------------------------------------
@@ -1808,6 +1885,7 @@ local EVENTS = {
 
 -- Eventos que nem todo cliente tem: registra sem reclamar se falhar.
 local OPTIONAL_EVENTS = {
+    "CHAT_MSG_LOOT",
     "CHAT_MSG_COMBAT_HOSTILE_DEATH",
     "CHAT_MSG_COMBAT_HOSTILEPLAYER_HITS",
     "CHAT_MSG_SPELL_HOSTILEPLAYER_DAMAGE",
@@ -1906,6 +1984,8 @@ ev:SetScript("OnEvent", function(_, event, ...)
         OnHonorGain(arg1)
     elseif event == "CHAT_MSG_MONEY" then
         OnMoneyMessage(arg1)
+    elseif event == "CHAT_MSG_LOOT" then
+        pcall(OnLootMessage, arg1)
     elseif event == "CHAT_MSG_COMBAT_HOSTILEPLAYER_HITS" or event == "CHAT_MSG_SPELL_HOSTILEPLAYER_DAMAGE" then
         OnHostilePlayerHit()
     elseif event == "LOOT_READY" or event == "LOOT_OPENED" then
@@ -1953,7 +2033,6 @@ ev:SetScript("OnEvent", function(_, event, ...)
         WD:MarkActive()
     elseif event == "PLAYER_REGEN_ENABLED" then
         if WD._cvarPending and WD.MaxNameplateRange then WD:MaxNameplateRange() end
-        if WD._bagPending then WD._bagPending = nil; WD:QueueBagValue() end
         if WD._targetPending then WD:UpdateTargetMacro() end
     elseif event == "NAME_PLATE_UNIT_ADDED" then
         WD:RememberSeen(arg1)

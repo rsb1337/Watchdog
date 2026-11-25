@@ -1169,51 +1169,43 @@ end
 ---------------------------------------------------------------------------
 -- Lista premium: nameplates destacadas + gerenciador
 ---------------------------------------------------------------------------
--- Cor do nome na nameplate: pinta o proprio nome da Blizzard (so quando o mob esta na lista).
--- Nao ha gancho em CompactUnitFrame_UpdateName (rodava codigo do addon em todos os frames);
--- em vez disso a cor e refeita a cada 0.5s e quando a nameplate aparece.
-local function NameplateNameFS(np)
-    local uf = np and np.UnitFrame
-    if not uf then return nil end
-    if uf.name then return uf.name end
-    if uf.NameText then return uf.NameText end
-    if uf.Name then return uf.Name end
-    -- Fallback: procura o primeiro FontString do frame (nome flutuante).
-    if uf.GetRegions then
-        for _, r in ipairs({ uf:GetRegions() }) do
-            if r and r.GetObjectType and r:GetObjectType() == "FontString" then
-                return r
-            end
-        end
-    end
-    return nil
+-- IMPORTANTE (taint): o addon NAO mexe mais em nenhum frame/texto da Blizzard nas nameplates.
+-- Mexer nelas (SetVertexColor no nome, gancho em CompactUnitFrame_UpdateName) deixava a execucao do
+-- jogo "tainted" e desabilitava a barra de acao em PvP. Agora o destaque e um texto PROPRIO,
+-- num frame do addon, ancorado acima da nameplate.
+local overlays = {}   -- [frame da nameplate] = { f = frame, fs = texto }
+local function GetOverlay(np)
+    local o = overlays[np]
+    if o then return o end
+    local f = CreateFrame("Frame", nil, UIParent)
+    f:SetSize(160, 14)
+    f:SetFrameStrata("BACKGROUND")
+    local fs = FS(f, 11, C.text, "CENTER", "OUTLINE")
+    fs:SetPoint("CENTER", f, "CENTER", 0, 0)
+    o = { f = f, fs = fs }
+    overlays[np] = o
+    return o
 end
-
--- nameplates com nome na lista: [np] = { fs = texto, col = cor }. Repintadas a cada quadro
--- (a Blizzard reescreve o nome em branco de tempos em tempos; sem gancho, so repintando rapido some a piscada).
-local watchedPlates = {}
-local paintFrame = CreateFrame("Frame")
-paintFrame:SetScript("OnUpdate", function()
-    for np, e in pairs(watchedPlates) do
-        if np.IsShown and not np:IsShown() then
-            watchedPlates[np] = nil
-        else
-            pcall(e.fs.SetVertexColor, e.fs, e.col[1], e.col[2], e.col[3])
-        end
-    end
-end)
 
 function WD:ColorOneNameplate(unit, np)
     if not unit or not C_NamePlate or not C_NamePlate.GetNamePlateForUnit then return end
     np = np or C_NamePlate.GetNamePlateForUnit(unit)
     if not np then return end
     local kind = WD:IsUnitWatched(unit)
-    if not kind then watchedPlates[np] = nil; return end   -- fora da lista: nao encosta na nameplate
-    local fs = NameplateNameFS(np)
-    if not fs or not fs.SetVertexColor then return end
-    local col = (kind == "pvp") and (WatchdogDB.watchColorPvp or C.purple) or (WatchdogDB.watchColor or C.blue)
-    watchedPlates[np] = { fs = fs, col = col }
-    fs:SetVertexColor(col[1], col[2], col[3])
+    local o = overlays[np]
+    if kind then
+        local name = WD.Clean(UnitName(unit))
+        if type(name) ~= "string" then if o then o.f:Hide() end return end
+        o = o or GetOverlay(np)
+        local col = (kind == "pvp") and (WatchdogDB.watchColorPvp or C.purple) or (WatchdogDB.watchColor or C.blue)
+        o.fs:SetTextColor(col[1], col[2], col[3])
+        o.fs:SetText(name)
+        o.f:ClearAllPoints()
+        o.f:SetPoint("BOTTOM", np, "TOP", 0, 2)
+        o.f:Show()
+    elseif o then
+        o.f:Hide()
+    end
 end
 
 function WD:OnNameplateAdded(unit)
@@ -1222,16 +1214,18 @@ end
 
 function WD:RefreshNameplates()
     if not C_NamePlate or not C_NamePlate.GetNamePlates then return end
-    local ok, list = pcall(C_NamePlate.GetNamePlates)
-    if not ok or type(list) ~= "table" then return end
     local active = {}
-    for _, np in ipairs(list) do
-        active[np] = true
-        local unit = WD.Clean(np.namePlateUnitToken or (np.UnitFrame and np.UnitFrame.unit))
-        if type(unit) == "string" then pcall(WD.ColorOneNameplate, WD, unit, np) end
+    local ok, list = pcall(C_NamePlate.GetNamePlates)
+    if ok and type(list) == "table" then
+        for _, np in ipairs(list) do
+            active[np] = true
+            local unit = WD.Clean(np.namePlateUnitToken)
+            if type(unit) == "string" then pcall(WD.ColorOneNameplate, WD, unit, np) end
+        end
     end
-    for np in pairs(watchedPlates) do
-        if not active[np] then watchedPlates[np] = nil end
+    -- plaquinhas que sumiram (ou foram recicladas): esconde o destaque
+    for np, o in pairs(overlays) do
+        if not active[np] then o.f:Hide() end
     end
 end
 
@@ -1913,6 +1907,7 @@ local BAR_DEFS = {
             b.side:SetText(start and FormatClock(time() - start) or "")
         end,
     },
+    loot = { accent = C.gold, w = 0, defaultY = -280, nameK = "bar_loot", custom = true },
     igold = {
         accent = C.green, w = 270, defaultY = -240, nameK = "bar_igold",
         update = function(b)
@@ -1932,7 +1927,189 @@ local function SaveBarState(key, f)
     WatchdogDB.bars[key] = st
 end
 
+---------------------------------------------------------------------------
+-- Janela de loot (/wd lootgoldbar): painel de resumo + lista de itens + lista de ouro, acoplados
+---------------------------------------------------------------------------
+local LOOT_ROWS, LOOT_RH = 6, 18
+local LOOT_LW, LOOT_IW, LOOT_GW = 178, 252, 118
+local LOOT_H = 26 + LOOT_ROWS * LOOT_RH + 6
+
+local function LootIcon(id)
+    local ic
+    if C_Item and C_Item.GetItemIconByID then ic = C_Item.GetItemIconByID(id)
+    elseif GetItemIcon then ic = GetItemIcon(id) end
+    return ic or "Interface\\Icons\\INV_Misc_QuestionMark"
+end
+
+local function CreateLootBar()
+    local f = CreateFrame("Frame", "WatchdogBar_loot", UIParent)
+    f:SetSize(LOOT_LW + LOOT_IW + LOOT_GW + 2, LOOT_H)
+    local st = WatchdogDB.bars and WatchdogDB.bars.loot
+    if st and st.pos then
+        f:SetPoint(st.pos[1], UIParent, st.pos[2], st.pos[3], st.pos[4])
+    else
+        f:SetPoint("TOP", UIParent, "TOP", 0, BAR_DEFS.loot.defaultY)
+    end
+    f:SetFrameStrata("MEDIUM")
+    f:SetClampedToScreen(true)
+    f:SetMovable(true)
+
+    local function Panel(w, anchorTo)
+        local p = CreateFrame("Frame", nil, f, BT)
+        p:SetSize(w, LOOT_H)
+        if anchorTo then p:SetPoint("TOPLEFT", anchorTo, "TOPRIGHT", 1, 0) else p:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0) end
+        Flat(p, C.card, C.border, 0.9)
+        p:EnableMouse(true)
+        p:RegisterForDrag("LeftButton")
+        p:SetScript("OnDragStart", function() f:StartMoving() end)
+        p:SetScript("OnDragStop", function() f:StopMovingOrSizing(); SaveBarState("loot", f) end)
+        p:SetScript("OnMouseUp", function(_, button)
+            if button == "RightButton" then f:Hide(); SaveBarState("loot", f) end
+        end)
+        return p
+    end
+    local left = Panel(LOOT_LW)
+    local ipan = Panel(LOOT_IW, left)
+    local gpan = Panel(LOOT_GW, ipan)
+
+    local acc = left:CreateTexture(nil, "ARTWORK")
+    acc:SetPoint("TOPLEFT", 1, -1); acc:SetPoint("BOTTOMLEFT", 1, 1); acc:SetWidth(3)
+    acc:SetColorTexture(C.gold[1], C.gold[2], C.gold[3], 1)
+
+    -- painel da esquerda: resumo
+    local title = FS(left, 11, C.dim, "LEFT")
+    title:SetPoint("TOPLEFT", 12, -7); title:SetText("WATCHDOG")
+    local function Line(y, labelK)
+        local lab = FS(left, 11, C.dim, "LEFT")
+        lab:SetPoint("TOPLEFT", 12, -y); lab:SetText(L[labelK])
+        local val = FS(left, 11, C.text, "RIGHT")
+        val:SetPoint("TOPRIGHT", -8, -y)
+        return val
+    end
+    local vTime = Line(26, "loot_time")
+    local vGold = Line(26 + 18, "loot_gold")
+    local vGph = Line(26 + 36, "loot_gph")
+    local bestLab = FS(left, 11, C.dim, "LEFT")
+    bestLab:SetPoint("TOPLEFT", 12, -(26 + 54)); bestLab:SetText(L.loot_best)
+    local vBest = FS(left, 11, C.text, "LEFT")
+    vBest:SetPoint("TOPLEFT", 12, -(26 + 70)); vBest:SetWidth(LOOT_LW - 20)
+    if vBest.SetWordWrap then vBest:SetWordWrap(false) end
+    local vBestVal = FS(left, 11, C.text, "RIGHT")
+    vBestVal:SetPoint("TOPRIGHT", -8, -(26 + 54))
+    local reset = CreateFrame("Button", nil, left, BT)
+    reset:SetSize(52, 16)
+    reset:SetPoint("BOTTOMRIGHT", -6, 5)
+    Flat(reset, C.tile, C.border, 1)
+    reset.text = FS(reset, 10, C.dim, "CENTER"); reset.text:SetPoint("CENTER"); reset.text:SetText(L.loot_reset)
+    reset:SetScript("OnClick", function() WD:FeedClear() end)
+
+    -- painel de itens
+    local ih = FS(ipan, 11, C.dim, "LEFT"); ih:SetPoint("TOPLEFT", 10, -7); ih:SetText(L.loot_items_h)
+    local irows = {}
+    for r = 1, LOOT_ROWS do
+        local row = CreateFrame("Button", nil, ipan)
+        row:SetSize(LOOT_IW - 8, LOOT_RH)
+        row:SetPoint("TOPLEFT", 4, -(24 + (r - 1) * LOOT_RH))
+        row.icon = row:CreateTexture(nil, "ARTWORK"); row.icon:SetSize(14, 14); row.icon:SetPoint("LEFT", 2, 0)
+        row.name = FS(row, 11, C.text, "LEFT"); row.name:SetPoint("LEFT", 20, 0); row.name:SetWidth(LOOT_IW - 8 - 20 - 84)
+        if row.name.SetWordWrap then row.name:SetWordWrap(false) end
+        row.val = FS(row, 11, C.text, "RIGHT"); row.val:SetPoint("RIGHT", -16, 0)
+        local x = CreateFrame("Button", nil, row)
+        x:SetSize(14, LOOT_RH); x:SetPoint("RIGHT", 0, 0)
+        x.t = FS(x, 11, C.mute, "CENTER"); x.t:SetPoint("CENTER"); x.t:SetText("x")
+        x:SetScript("OnEnter", function(self) self.t:SetTextColor(1, 0.3, 0.3) end)
+        x:SetScript("OnLeave", function(self) self.t:SetTextColor(C.mute[1], C.mute[2], C.mute[3]) end)
+        x:SetScript("OnClick", function()
+            local feed = WD:LootFeed()
+            if feed and row.idx and feed.items[row.idx] then table.remove(feed.items, row.idx); WD:RefreshLootBar() end
+        end)
+        row:SetScript("OnEnter", function(self)
+            if not self.itemID then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            pcall(GameTooltip.SetHyperlink, GameTooltip, "item:" .. self.itemID)
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        row:Hide()
+        irows[r] = row
+    end
+
+    -- painel de ouro
+    local gh = FS(gpan, 11, C.dim, "LEFT"); gh:SetPoint("TOPLEFT", 10, -7); gh:SetText(L.loot_gold_h)
+    local gtot = FS(gpan, 11, C.text, "RIGHT"); gtot:SetPoint("TOPRIGHT", -8, -7)
+    local grows = {}
+    for r = 1, LOOT_ROWS do
+        local fs = FS(gpan, 11, C.text, "RIGHT")
+        fs:SetPoint("TOPRIGHT", -8, -(28 + (r - 1) * LOOT_RH))
+        grows[r] = fs
+    end
+
+    local best = nil
+    local function Paint()
+        if not (WatchdogCharDB and WatchdogCharDB.session) then return end
+        local start = WatchdogCharDB.sessionStart
+        vTime:SetText(start and FormatClock(time() - start) or "00:00:00")
+        local perHour, total = SessionGoldPerHour()
+        vGold:SetText(Coins(total))
+        vGph:SetText(Coins(perHour))
+        local feed = WD:LootFeed() or { items = {}, gold = {}, goldTotal = 0 }
+        -- item mais caro (valor unitario): so recalcula fora de combate
+        if not (InCombatLockdown and InCombatLockdown()) then
+            local bid, bv = feed.best, 0
+            if bid then bv = tonumber((WD:UnitValue(bid))) or 0 end
+            for _, e in ipairs(feed.items) do
+                local v = tonumber((WD:UnitValue(e.id))) or 0
+                if v > bv then bid, bv = e.id, v end
+            end
+            feed.best = bid
+            best = bid and { id = bid, v = bv } or nil
+        end
+        if best then
+            local nm, q = WD:GetItemDisplay(best.id)
+            vBest:SetText(QualityColor(q) .. nm .. "|r")
+            vBestVal:SetText(Coins(best.v))
+        else
+            vBest:SetText(Gray(L.loot_none)); vBestVal:SetText("")
+        end
+        for r = 1, LOOT_ROWS do
+            local e, row = feed.items[r], irows[r]
+            if e then
+                local nm, q, sell = WD:GetItemDisplay(e.id)
+                row.idx, row.itemID = r, e.id
+                row.icon:SetTexture(LootIcon(e.id))
+                row.name:SetText(White((e.n or 1) .. "x ") .. QualityColor(q) .. "[" .. nm .. "]|r")
+                local unit = (InCombatLockdown and InCombatLockdown()) and (tonumber(sell) or 0) or (tonumber((WD:UnitValue(e.id))) or 0)
+                row.val:SetText(Coins(unit * (e.n or 1)))
+                row:Show()
+            else
+                row.idx, row.itemID = nil, nil
+                row:Hide()
+            end
+            local g = feed.gold[r]
+            grows[r]:SetText(g and Coins(g.c) or "")
+        end
+        gtot:SetText(Coins(feed.goldTotal or 0))
+    end
+    f.Paint = Paint
+
+    local tick = 0
+    f:SetScript("OnUpdate", function(_, el)
+        tick = tick + el
+        if tick >= 1 then tick = 0; Paint() end
+    end)
+    f:SetScript("OnShow", Paint)
+    f:Hide()
+    bars.loot = f
+    return f
+end
+
+function WD:RefreshLootBar()
+    local f = bars.loot
+    if f and f:IsShown() and f.Paint then f.Paint() end
+end
+
 local function CreateBar(key)
+    if key == "loot" then return CreateLootBar() end
     local def = BAR_DEFS[key]
     local f = CreateFrame("Frame", "WatchdogBar_" .. key, UIParent, BT)
     f:SetSize(def.w, 30)
@@ -2094,6 +2271,7 @@ function BuildButtonsPanel(host)
         { label = L[BAR_DEFS.exp.nameK], on = BarOn("exp"), click = BarGo("exp") },
         { label = L[BAR_DEFS.sgold.nameK], on = BarOn("sgold"), click = BarGo("sgold") },
         { label = L[BAR_DEFS.igold.nameK], on = BarOn("igold"), click = BarGo("igold") },
+        { label = L[BAR_DEFS.loot.nameK], on = BarOn("loot"), click = BarGo("loot") },
         { label = L.btn_minimap, on = function() return not WatchdogDB.hideMinimap end,
           click = function()
               WatchdogDB.hideMinimap = not WatchdogDB.hideMinimap
@@ -2489,12 +2667,76 @@ function BuildAHPanel(host)
             end
         end
     end
-    local function Cycle(list, cur)
-        for i, v in ipairs(list) do if v == cur then return list[i % #list + 1] end end
-        return list[1]
+    -- Listas de selecao (abre ao clicar no botao; escolhe-se direto o que quer)
+    local pops = {}
+    local function HideAllPops() for _, pp in ipairs(pops) do pp:Hide() end end
+    local function MakeDrop(chip, list, prefix, getCur, setCur, w)
+        local pop = CreateFrame("Frame", nil, hp, BT)
+        pop:SetFrameLevel((tonumber(hp:GetFrameLevel()) or 10) + 60)
+        pop:SetSize(w, #list * 26 + 8)
+        pop:SetPoint("TOPLEFT", chip, "BOTTOMLEFT", 0, -2)
+        Flat(pop, C.bg, C.border, 1)
+        pop:EnableMouse(true)
+        pop:Hide()
+        pops[#pops + 1] = pop
+        local away = 0
+        local function Over(fr)
+            if fr and fr.IsMouseOver then return fr:IsMouseOver() end
+            if MouseIsOver then return MouseIsOver(fr) end
+            return true
+        end
+        pop:SetScript("OnUpdate", function(self, el)
+            local ok, over = pcall(function() return Over(self) or Over(chip) end)
+            if not ok then self:SetScript("OnUpdate", nil); return end
+            if over then away = 0
+            else
+                away = away + el
+                if away > 0.5 then self:Hide() end
+            end
+        end)
+        local opts = {}
+        local function Paint()
+            for i, key in ipairs(list) do
+                local o = opts[i]
+                if getCur() == key then
+                    Flat(o, C.tile, C.red, 1); o.text:SetTextColor(1, 1, 1)
+                else
+                    Flat(o, C.bg, C.bg, 0); o.text:SetTextColor(C.dim[1], C.dim[2], C.dim[3])
+                end
+            end
+        end
+        for i, key in ipairs(list) do
+            local o = CreateFrame("Button", nil, pop, BT)
+            o:SetFrameLevel((tonumber(pop:GetFrameLevel()) or 70) + 2)
+            o:EnableMouse(true)
+            o:RegisterForClicks("LeftButtonUp")
+            o:SetSize(w - 8, 24)
+            o:SetPoint("TOPLEFT", 4, -4 - (i - 1) * 26)
+            o.text = FS(o, 12, C.dim, "LEFT")
+            o.text:SetPoint("LEFT", 10, 0)
+            o.text:SetText(L[prefix .. key] or key)
+            o:SetScript("OnEnter", function(self) Flat(self, C.tile, C.border, 1) end)
+            o:SetScript("OnLeave", function(self)
+                if getCur() == key then Flat(self, C.tile, C.red, 1) else Flat(self, C.bg, C.bg, 0) end
+            end)
+            local function Pick()
+                setCur(key)
+                pop:Hide()
+                HRebuild(); HPaint()
+            end
+            o:SetScript("OnClick", Pick)
+            o:SetScript("OnMouseUp", Pick)
+            opts[i] = o
+        end
+        pop:SetScript("OnShow", function() away = 0; Paint() end)
+        chip:SetScript("OnClick", function()
+            if pop:IsShown() then pop:Hide()
+            else HideAllPops(); Paint(); pop:Show() end
+        end)
     end
-    fChip:SetScript("OnClick", function() hs.filter = Cycle(FILTERS, hs.filter); HRebuild(); HPaint() end)
-    pChip:SetScript("OnClick", function() hs.period = Cycle(PERIODS, hs.period); HRebuild(); HPaint() end)
+    MakeDrop(fChip, FILTERS, "hist_f_", function() return hs.filter end, function(v) hs.filter = v end, 170)
+    MakeDrop(pChip, PERIODS, "hist_p_", function() return hs.period end, function(v) hs.period = v end, 150)
+    hp:SetScript("OnHide", HideAllPops)
 
     local subItems = MakeChip(p, L.ah_sub_items, 52)
     subItems:SetPoint("TOPRIGHT", p, "TOPRIGHT", -78, 0)
@@ -2684,6 +2926,8 @@ SlashCmdList.WATCHDOG = function(msg)
         ToggleBar("sgold")
     elseif cmd == "igoldbar" then
         ToggleBar("igold")
+    elseif cmd == "lootgoldbar" then
+        ToggleBar("loot")
     elseif cmd == "commands" or cmd == "comandos" or cmd == "cmds" then
         if WD.ToggleCommands then WD:ToggleCommands() end
     elseif cmd == "config" or cmd == "opcoes" or cmd == "opções" or cmd == "menu" or cmd == "assist" then
@@ -2754,7 +2998,7 @@ SlashCmdList.WATCHDOG = function(msg)
         for _, line in ipairs({
             L.help_open, L.help_new, L.help_report, L.help_hist, L.help_cons, L.help_session, L.help_wizard, L.help_inv,
             L.help_alerts, L.help_premium, L.help_watch, L.help_unwatch, L.help_nameplates,
-            L.help_minimap, L.help_goldbar, L.help_expbar, L.help_sgoldbar, L.help_igoldbar,
+            L.help_minimap, L.help_goldbar, L.help_expbar, L.help_sgoldbar, L.help_igoldbar, L.help_lootgoldbar,
             L.help_config, L.help_lang, L.help_status, L.help_debug,
         }) do print(line) end
     else
@@ -2770,6 +3014,9 @@ SlashCmdList.WATCHDOGEXPBAR = function() ToggleBar("exp") end
 
 SLASH_WATCHDOGSGOLDBAR1 = "/wdsgoldbar"
 SlashCmdList.WATCHDOGSGOLDBAR = function() ToggleBar("sgold") end
+
+SLASH_WATCHDOGLOOTGOLDBAR1 = "/wdlootgoldbar"
+SlashCmdList.WATCHDOGLOOTGOLDBAR = function() ToggleBar("loot") end
 
 SLASH_WATCHDOGIGOLDBAR1 = "/wdigoldbar"
 SlashCmdList.WATCHDOGIGOLDBAR = function() ToggleBar("igold") end
