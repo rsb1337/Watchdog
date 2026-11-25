@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.3
+
+### Corrigido
+- Black list: o nome do mob na nameplate piscava entre azul e branco (a Blizzard reescreve o nome em branco e a cor so era refeita a cada 0.5s). Agora a cor dos nomes que estao na lista e refeita a cada quadro, so nessas nameplates; as demais continuam sem ser tocadas.
+
 ## 1.9.2
 
 ### Alterado

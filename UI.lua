@@ -1188,14 +1188,30 @@ local function NameplateNameFS(np)
     return nil
 end
 
+-- nameplates com nome na lista: [np] = { fs = texto, col = cor }. Repintadas a cada quadro
+-- (a Blizzard reescreve o nome em branco de tempos em tempos; sem gancho, so repintando rapido some a piscada).
+local watchedPlates = {}
+local paintFrame = CreateFrame("Frame")
+paintFrame:SetScript("OnUpdate", function()
+    for np, e in pairs(watchedPlates) do
+        if np.IsShown and not np:IsShown() then
+            watchedPlates[np] = nil
+        else
+            pcall(e.fs.SetVertexColor, e.fs, e.col[1], e.col[2], e.col[3])
+        end
+    end
+end)
+
 function WD:ColorOneNameplate(unit, np)
     if not unit or not C_NamePlate or not C_NamePlate.GetNamePlateForUnit then return end
-    local kind = WD:IsUnitWatched(unit)
-    if not kind then return end   -- fora da lista: nao encosta na nameplate
     np = np or C_NamePlate.GetNamePlateForUnit(unit)
+    if not np then return end
+    local kind = WD:IsUnitWatched(unit)
+    if not kind then watchedPlates[np] = nil; return end   -- fora da lista: nao encosta na nameplate
     local fs = NameplateNameFS(np)
     if not fs or not fs.SetVertexColor then return end
     local col = (kind == "pvp") and (WatchdogDB.watchColorPvp or C.purple) or (WatchdogDB.watchColor or C.blue)
+    watchedPlates[np] = { fs = fs, col = col }
     fs:SetVertexColor(col[1], col[2], col[3])
 end
 
@@ -1207,9 +1223,14 @@ function WD:RefreshNameplates()
     if not C_NamePlate or not C_NamePlate.GetNamePlates then return end
     local ok, list = pcall(C_NamePlate.GetNamePlates)
     if not ok or type(list) ~= "table" then return end
+    local active = {}
     for _, np in ipairs(list) do
+        active[np] = true
         local unit = WD.Clean(np.namePlateUnitToken or (np.UnitFrame and np.UnitFrame.unit))
         if type(unit) == "string" then pcall(WD.ColorOneNameplate, WD, unit, np) end
+    end
+    for np in pairs(watchedPlates) do
+        if not active[np] then watchedPlates[np] = nil end
     end
 end
 
