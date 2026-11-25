@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.4
+
+### Alterado
+- Modo quieto em combate: durante o combate o addon nao le mais as bolsas (valor/soulbound por tooltip), nao atualiza os contornos e botoes da bolsa e nao acrescenta a linha de preco nos tooltips de item. Tudo isso e refeito assim que o combate termina (o gold da sessao e atualizado ao sair do combate). Objetivo: eliminar qualquer chance do Watchdog interferir na barra de acao durante lutas (erros "SetCooldown ... secret values ... untainted execution").
+
 ## 1.9.3
 
 ### Corrigido

@@ -3,7 +3,7 @@
 -- Tudo vem de eventos de chat, XP, honra, loot e bolsas.
 local ADDON, WD = ...
 local L = WD.L
-WD.version = "1.9.3"
+WD.version = "1.9.4"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -677,6 +677,9 @@ end
 function WD:UpdateBagValue()
     local s = WatchdogCharDB and WatchdogCharDB.session
     if not s then return end
+    -- Em combate o addon fica quieto: a leitura das bolsas usa tooltips e itens, e o jogo trata
+    -- dados de combate como "secretos". Refaz quando o combate acabar.
+    if InCombatLockdown and InCombatLockdown() then WD._bagPending = true; return end
     if bankOpen then
         local bank = self:ScanBank()
         if bank.pending == 0 and bank.total > 0 then
@@ -1949,6 +1952,7 @@ ev:SetScript("OnEvent", function(_, event, ...)
         WD:MarkActive()
     elseif event == "PLAYER_REGEN_ENABLED" then
         if WD._cvarPending and WD.MaxNameplateRange then WD:MaxNameplateRange() end
+        if WD._bagPending then WD._bagPending = nil; WD:QueueBagValue() end
         if WD._targetPending then WD:UpdateTargetMacro() end
     elseif event == "NAME_PLATE_UNIT_ADDED" then
         WD:RememberSeen(arg1)
