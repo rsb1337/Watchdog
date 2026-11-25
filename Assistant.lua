@@ -7,6 +7,7 @@
 --  6) menu de configuracao (/wd config)
 -- Nao usa o combat log (bloqueado neste cliente) e filtra "secret values".
 local _, WD = ...
+local function GetItemInfo(...) local f = _G.GetItemInfo or (C_Item and C_Item.GetItemInfo); if f then return f(...) end end
 local L = WD.L
 local Clean = WD.Clean or function(v) return v end
 

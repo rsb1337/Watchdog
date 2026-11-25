@@ -1,6 +1,7 @@
 -- Watchdog: janela principal (visual do app Watchdog), barras flutuantes, avisos,
 -- relatorio, botao do minimapa e comandos.
 local _, WD = ...
+local function GetItemInfo(...) local f = _G.GetItemInfo or (C_Item and C_Item.GetItemInfo); if f then return f(...) end end
 local L = WD.L
 
 local MEDIA = "Interface\\AddOns\\Watchdog\\Media\\"

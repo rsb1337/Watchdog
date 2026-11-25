@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.7
+
+### Corrigido
+- Erro Lua "attempt to call a nil value" (UI.lua) ao passar o mouse nos itens da aba Auction House. O addon usava a funcao global GetItemInfo, que este cliente nao tem (so existe C_Item.GetItemInfo). Antes ela podia vir de outro addon; sem eles, quebrava. Agora o Watchdog usa a funcao certa do cliente e nao depende de nenhum outro addon.
+
 ## 1.9.6
 
 ### Removido

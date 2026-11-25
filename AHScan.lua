@@ -1,5 +1,6 @@
 -- Watchdog: scan da casa de leiloes (preco minimo por item), tag no tooltip e busca.
 local _, WD = ...
+local function GetItemInfo(...) local f = _G.GetItemInfo or (C_Item and C_Item.GetItemInfo); if f then return f(...) end end
 local L = WD.L
 
 local scanning, ahOpen, processing = false, false, false
