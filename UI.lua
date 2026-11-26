@@ -2073,7 +2073,6 @@ local function CreateLootBar()
     local gh = FS(gpan, 11, C.dim, "LEFT"); gh:SetPoint("TOPLEFT", 10, -7); gh:SetText(L.loot_gold_h)
     local minGold = SmallBtn(gpan, "-", 16)
     minGold:SetPoint("TOPRIGHT", -4, -4)
-    local gtot = FS(gpan, 11, C.text, "RIGHT"); gtot:SetPoint("TOPRIGHT", -24, -7)
     local grows = {}
     for r = 1, LOOT_MAXR do
         local fs = FS(gpan, 11, C.text, "RIGHT")
@@ -2201,7 +2200,6 @@ local function CreateLootBar()
             local g = (r <= nrows) and feed.gold[r] or nil
             grows[r]:SetText(g and Coins(g.c) or "")
         end
-        gtot:SetText(Coins(feed.goldTotal or 0))
     end
     f.Paint = Paint
     f.Layout = Layout

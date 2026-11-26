@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.12
+
+### Alterado
+- Janela /wd lootgoldbar: a lista de ouro nao mostra mais o total no cabecalho (o total ja aparece no painel da esquerda); ela so mostra a sequencia de drops de ouro.
+
 ## 1.9.11
 
 ### Novo (diagnostico)
