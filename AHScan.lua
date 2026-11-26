@@ -412,16 +412,34 @@ local function StackCount(itemID)
 end
 
 -- Segurar/soltar o Shift refaz o tooltip (pilha <-> unidade) sem precisar mexer o mouse.
+-- IMPORTANTE: chamar o OnEnter de um botao da Blizzard a partir do nosso codigo contamina (taint) a execucao.
+-- Em botao de barra de acao isso quebrava o SetCooldown (valores secretos) e bloqueava SetAttribute/SetShown em combate.
+-- Por isso so refazemos o tooltip de itens de bolsa/banco, nunca em combate, e nunca de botoes de acao.
+local function IsBagItemButton(o)
+    if type(o) ~= "table" then return false end
+    local name = (o.GetName and o:GetName()) or ""
+    if name:find("ActionButton") or name:find("MultiBar") or name:find("Stance") or name:find("PetAction")
+        or name:find("Possess") or name:find("ExtraAction") or name:find("OverrideActionBar") or name:find("Bar") then
+        return false
+    end
+    if o.action ~= nil or o.GetAction then return false end
+    if o.GetBagID then return true end
+    local p = o.GetParent and o:GetParent()
+    return (p and p.GetBagID) and true or false
+end
+
 local shiftFrame = CreateFrame("Frame")
 pcall(shiftFrame.RegisterEvent, shiftFrame, "MODIFIER_STATE_CHANGED")
 shiftFrame:SetScript("OnEvent", function(_, _, key)
     if key and not tostring(key):find("SHIFT") then return end
+    if InCombatLockdown and InCombatLockdown() then return end
     local tt = GameTooltip
     if not (tt and tt.IsShown and tt:IsShown() and tt.GetOwner) then return end
     local o = tt:GetOwner()
-    if type(o) ~= "table" then return end
-    local h = o and o.GetScript and o:GetScript("OnEnter")
-    if h then pcall(h, o) end
+    if not IsBagItemButton(o) then return end
+    local h = o.GetScript and o:GetScript("OnEnter")
+    if not h then return end
+    if securecallfunction then pcall(securecallfunction, h, o) else pcall(h, o) end
 end)
 
 local function AddTag(tt, itemID)

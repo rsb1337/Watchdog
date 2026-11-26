@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.15
+
+### Corrigido
+- Causa do erro "ActionButton.lua: bad argument #1 to 'SetCooldown' ... Secret values are only allowed during untainted execution" e da barra de acao travando/sumindo em combate: ao segurar ou soltar o Shift com um tooltip aberto, o addon refazia o tooltip chamando o OnEnter do botao sob o mouse. Em botao de barra de acao isso contaminava (taint) a atualizacao da barra pela Blizzard. Agora o tooltip so e refeito em itens de bolsa/banco, nunca em combate e nunca em botoes de acao.
+
 ## 1.9.14
 
 ### Alterado (ouro da sessao e ouro por hora)
