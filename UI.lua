@@ -2415,6 +2415,7 @@ function BuildButtonsPanel(host)
         { label = L[BAR_DEFS.sgold.nameK], on = BarOn("sgold"), click = BarGo("sgold") },
         { label = L[BAR_DEFS.igold.nameK], on = BarOn("igold"), click = BarGo("igold") },
         { label = L[BAR_DEFS.loot.nameK], on = BarOn("loot"), click = BarGo("loot") },
+        { label = L.btn_bl, on = function() return WD:BLIsShown() end, click = function() WD:ToggleBL() end },
         { label = L.btn_minimap, on = function() return not WatchdogDB.hideMinimap end,
           click = function()
               WatchdogDB.hideMinimap = not WatchdogDB.hideMinimap
@@ -2933,29 +2934,45 @@ end
 ---------------------------------------------------------------------------
 local blFrame
 local function CreateBL()
-    local W, SEEN_N, LIST_N, SEEN_H, LIST_H = 236, 4, 6, 17, 20
+    local W, WMIN, HFULL, HMIN = 236, 168, 286, 24
+    local SEEN_N, LIST_N, SEEN_H, LIST_H = 4, 6, 17, 20
     local f = CreateFrame("Frame", "WatchdogBL", UIParent, BT)
-    f:SetSize(W, 286)
+    f:SetSize(W, HFULL)
     local st = WatchdogDB.bl
     f.kind = (st and st.kind == "pvp") and "pvp" or "pve"
-    if st and st.pos then f:SetPoint(st.pos[1], UIParent, st.pos[2], st.pos[3], st.pos[4])
-    else f:SetPoint("CENTER", UIParent, "CENTER", 300, 0) end
+    -- a janela encolhe/cresce para a direita e para baixo: ancora sempre no canto superior esquerdo
+    local function ToTopLeft()
+        local l, t = f:GetLeft(), f:GetTop()
+        if not l or not t then return end
+        f:ClearAllPoints()
+        f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", l, t)
+    end
+    if st and st.pos then
+        f:SetPoint(st.pos[1], UIParent, st.pos[2], st.pos[3], st.pos[4])
+        if st.pos[1] ~= "TOPLEFT" and C_Timer and C_Timer.After then C_Timer.After(0, ToTopLeft) end
+    else
+        f:SetPoint("CENTER", UIParent, "CENTER", 300, 0)
+        if C_Timer and C_Timer.After then C_Timer.After(0, ToTopLeft) end
+    end
     f:SetFrameStrata("MEDIUM")
     f:SetClampedToScreen(true)
     f:SetMovable(true)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
     Flat(f, C.card, C.border, 0.96)
+    local accent = f:CreateTexture(nil, "ARTWORK")
+    accent:SetPoint("TOPLEFT", 1, -1); accent:SetPoint("BOTTOMLEFT", 1, 1); accent:SetWidth(3)
+    accent:SetColorTexture(C.gold[1], C.gold[2], C.gold[3], 1)
 
     function f.Save()
         local s = WatchdogDB.bl or {}
-        s.shown = f:IsShown(); s.kind = f.kind
+        s.shown = f:IsShown(); s.kind = f.kind; s.collapsed = f.collapsed and true or false
         local p, _, rp, x, y = f:GetPoint()
         if p then s.pos = { p, rp, x, y } end
         WatchdogDB.bl = s
     end
     f:SetScript("OnDragStart", function(self) self:StartMoving() end)
-    f:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); f.Save() end)
+    f:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); ToTopLeft(); f.Save() end)
 
     local function Btn(parent, text, w, h)
         local b = CreateFrame("Button", nil, parent, BT)
@@ -2965,33 +2982,42 @@ local function CreateBL()
         Flat(b, C.tile, C.border, 1)
         b.text = FS(b, 11, C.dim, "CENTER"); b.text:SetPoint("CENTER"); b.text:SetText(text)
         b:SetScript("OnEnter", function(self) self.text:SetTextColor(C.text[1], C.text[2], C.text[3]) end)
-        b:SetScript("OnLeave", function(self) if not self.active then self.text:SetTextColor(C.dim[1], C.dim[2], C.dim[3]) end end)
+        b:SetScript("OnLeave", function(self)
+            local c = self.col or (self.active and C.green) or C.dim
+            self.text:SetTextColor(c[1], c[2], c[3])
+        end)
         return b
     end
 
+    -- cabecalho (sempre visivel, tambem minimizado)
     local title = FS(f, 11, C.dim, "LEFT")
-    title:SetPoint("TOPLEFT", 10, -8); title:SetText("WATCHDOG  BL")
+    title:SetPoint("TOPLEFT", 12, -7); title:SetText("WATCHDOG  BL")
     local close = Btn(f, "x", 16, 16)
     close:SetPoint("TOPRIGHT", -4, -4)
     close:SetScript("OnClick", function() f:Hide(); f.Save() end)
-    local tabPvp = Btn(f, "PvP", 36, 16)
-    tabPvp:SetPoint("RIGHT", close, "LEFT", -3, 0)
-    local tabPve = Btn(f, "PvE", 36, 16)
+    local minBtn = Btn(f, "-", 16, 16)
+    minBtn:SetPoint("RIGHT", close, "LEFT", -3, 0)
+
+    -- corpo (esconde ao minimizar)
+    local body = CreateFrame("Frame", nil, f)
+    body:SetAllPoints(f)
+    local tabPvp = Btn(body, "PvP", 36, 16)
+    tabPvp:SetPoint("RIGHT", minBtn, "LEFT", -3, 0)
+    local tabPve = Btn(body, "PvE", 36, 16)
     tabPve:SetPoint("RIGHT", tabPvp, "LEFT", -2, 0)
 
-    -- acoes rapidas
-    local addBtn = Btn(f, L.bl_target, 74, 20)
-    addBtn:SetPoint("TOPLEFT", 8, -28)
-    local macroBtn = Btn(f, L.black_macro, 92, 20)
+    local addBtn = Btn(body, L.bl_target, 74, 20)
+    addBtn:SetPoint("TOPLEFT", 10, -28)
+    local macroBtn = Btn(body, L.black_macro, 92, 20)
     macroBtn:SetPoint("LEFT", addBtn, "RIGHT", 4, 0)
 
-    local seenLbl = FS(f, 10, C.mute, "LEFT")
-    seenLbl:SetPoint("TOPLEFT", 10, -54); seenLbl:SetText(L.black_seen)
+    local seenLbl = FS(body, 10, C.mute, "LEFT")
+    seenLbl:SetPoint("TOPLEFT", 12, -54); seenLbl:SetText(L.black_seen)
     local seenRows = {}
     for r = 1, SEEN_N do
-        local b = CreateFrame("Button", nil, f)
+        local b = CreateFrame("Button", nil, body)
         b:SetHeight(SEEN_H)
-        b:SetPoint("TOPLEFT", 8, -68 - (r - 1) * SEEN_H)
+        b:SetPoint("TOPLEFT", 10, -68 - (r - 1) * SEEN_H)
         b:SetPoint("TOPRIGHT", -8, -68 - (r - 1) * SEEN_H)
         b.text = FS(b, 12, C.text, "LEFT"); b.text:SetPoint("LEFT", 4, 0)
         b.hl = b:CreateTexture(nil, "BACKGROUND"); b.hl:SetAllPoints(); b.hl:SetColorTexture(1, 1, 1, 0.07); b.hl:Hide()
@@ -3002,17 +3028,17 @@ local function CreateBL()
         end)
         seenRows[r] = b
     end
-    local seenEmpty = FS(f, 11, C.mute, "LEFT")
-    seenEmpty:SetPoint("TOPLEFT", 12, -70); seenEmpty:SetText(L.black_seen_empty)
+    local seenEmpty = FS(body, 11, C.mute, "LEFT")
+    seenEmpty:SetPoint("TOPLEFT", 14, -70); seenEmpty:SetText(L.black_seen_empty)
 
-    local listLbl = FS(f, 10, C.mute, "LEFT")
-    listLbl:SetPoint("TOPLEFT", 10, -68 - SEEN_N * SEEN_H - 6)
+    local listLbl = FS(body, 10, C.mute, "LEFT")
+    listLbl:SetPoint("TOPLEFT", 12, -68 - SEEN_N * SEEN_H - 6)
     local listTop = 68 + SEEN_N * SEEN_H + 20
     local listRows = {}
     for r = 1, LIST_N do
-        local row = CreateFrame("Frame", nil, f)
+        local row = CreateFrame("Frame", nil, body)
         row:SetHeight(LIST_H)
-        row:SetPoint("TOPLEFT", 8, -listTop - (r - 1) * LIST_H)
+        row:SetPoint("TOPLEFT", 10, -listTop - (r - 1) * LIST_H)
         row:SetPoint("TOPRIGHT", -8, -listTop - (r - 1) * LIST_H)
         local x = Btn(row, "x", 18, 18); x:SetPoint("RIGHT", 0, 0)
         x:SetScript("OnClick", function()
@@ -3020,24 +3046,38 @@ local function CreateBL()
         end)
         local m = Btn(row, "+M", 28, 18); m:SetPoint("RIGHT", x, "LEFT", -3, 0)
         m:SetScript("OnEnter", function(self)
+            self.text:SetTextColor(C.text[1], C.text[2], C.text[3])
             GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:SetText(L.black_macro_tip); GameTooltip:Show()
         end)
-        m:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        local mLeave = m:GetScript("OnLeave")
+        m:SetScript("OnLeave", function(self) if mLeave then mLeave(self) end GameTooltip:Hide() end)
         m:SetScript("OnClick", function()
             if row.name then WD:ToggleMacroName(row.name); f.Refresh() end
         end)
         row.m = m
+        local am = Btn(row, "A+", 28, 18); am:SetPoint("RIGHT", m, "LEFT", -3, 0)
+        am:SetScript("OnEnter", function(self)
+            self.text:SetTextColor(C.text[1], C.text[2], C.text[3])
+            GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:SetText(L.black_alert_tip); GameTooltip:Show()
+        end)
+        local aLeave = am:GetScript("OnLeave")
+        am:SetScript("OnLeave", function(self) if aLeave then aLeave(self) end GameTooltip:Hide() end)
+        am:SetScript("OnClick", function()
+            if row.name then WD:ToggleAlertName(row.name); f.Refresh() end
+        end)
+        row.a = am
         row.label = FS(row, 12, C.text, "LEFT")
-        row.label:SetPoint("LEFT", 4, 0); row.label:SetPoint("RIGHT", m, "LEFT", -4, 0)
+        row.label:SetPoint("LEFT", 4, 0); row.label:SetPoint("RIGHT", am, "LEFT", -4, 0)
         row.label:SetWordWrap(false)
         row:Hide()
         listRows[r] = row
     end
-    local listEmpty = FS(f, 11, C.mute, "LEFT")
-    listEmpty:SetPoint("TOPLEFT", 12, -listTop - 2); listEmpty:SetText(L.black_empty)
+    local listEmpty = FS(body, 11, C.mute, "LEFT")
+    listEmpty:SetPoint("TOPLEFT", 14, -listTop - 2); listEmpty:SetText(L.black_empty)
     f.offset = 0
     f:EnableMouseWheel(true)
     f:SetScript("OnMouseWheel", function(self, delta)
+        if self.collapsed then return end
         local n = #WD:WatchList(self.kind)
         self.offset = math.max(0, math.min(math.max(0, n - LIST_N), self.offset - delta))
         f.Refresh()
@@ -3051,12 +3091,18 @@ local function CreateBL()
             Flat(b, C.tile, C.border, 1); b.text:SetTextColor(C.dim[1], C.dim[2], C.dim[3])
         end
     end
+    local function Mark(btn, on, onText, offText, col)
+        btn.text:SetText(on and onText or offText)
+        btn.col = on and col or nil
+        local c = on and col or C.dim
+        btn.text:SetTextColor(c[1], c[2], c[3])
+    end
 
     function f.Refresh()
-        if not f:IsShown() then return end
+        if not f:IsShown() or f.collapsed then return end
         local kind = f.kind
         Tab(tabPve, kind == "pve", C.blue); Tab(tabPvp, kind == "pvp", C.purple)
-        local accent = kind == "pvp" and C.purple or C.blue
+        local ac = kind == "pvp" and C.purple or C.blue
         local list = WD:WatchList(kind)
         listLbl:SetText(string.format(L.black_list, #list))
         f.offset = math.max(0, math.min(math.max(0, #list - LIST_N), f.offset))
@@ -3065,11 +3111,9 @@ local function CreateBL()
             local row = listRows[r]
             if name then
                 row.name = name
-                row.label:SetText(WD:DisplayName(name, kind)); row.label:SetTextColor(accent[1], accent[2], accent[3])
-                local on = WD:InMacro(name)
-                row.m.text:SetText(on and "M" or "+M")
-                local c = on and C.green or C.dim
-                row.m.text:SetTextColor(c[1], c[2], c[3]); row.m.active = on
+                row.label:SetText(WD:DisplayName(name, kind)); row.label:SetTextColor(ac[1], ac[2], ac[3])
+                Mark(row.m, WD:InMacro(name), "M", "+M", C.green)
+                Mark(row.a, WD:InAlert(name), "A", "A+", C.gold)
                 row:Show()
             else row.name = nil; row:Hide() end
         end
@@ -3086,6 +3130,18 @@ local function CreateBL()
         for r = shown + 1, SEEN_N do seenRows[r].name = nil; seenRows[r]:Hide() end
         seenEmpty:SetShown(shown == 0)
     end
+
+    -- minimizar: vira so uma barrinha com o nome (estilo goldbar); maximizar para mexer de novo
+    function f.SetCollapsed(c)
+        f.collapsed = c and true or false
+        body:SetShown(not f.collapsed)
+        f:SetSize(f.collapsed and WMIN or W, f.collapsed and HMIN or HFULL)
+        minBtn.text:SetText(f.collapsed and "+" or "-")
+        ToTopLeft()
+        if not f.collapsed then f.Refresh() end
+        f.Save()
+    end
+    minBtn:SetScript("OnClick", function() f.SetCollapsed(not f.collapsed) end)
 
     local function SetKind(k) f.kind = k; f.offset = 0; f.Refresh(); f.Save() end
     tabPve:SetScript("OnClick", function() SetKind("pve") end)
@@ -3120,6 +3176,7 @@ local function CreateBL()
         if acc >= 1 then acc = 0; f.Refresh() end
     end)
     f:SetScript("OnShow", function() f.Refresh() end)
+    if st and st.collapsed then f.SetCollapsed(true) end
     return f
 end
 
@@ -3131,6 +3188,8 @@ function WD:ToggleBL()
     end
     blFrame.Refresh(); blFrame.Save()
 end
+
+function WD:BLIsShown() return blFrame and blFrame:IsShown() or false end
 
 local function RestoreBars()
     if WatchdogDB.bl and WatchdogDB.bl.shown and not blFrame then

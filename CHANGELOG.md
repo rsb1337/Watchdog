@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.0.0
+
+Primeira versao de release da linha 2.x. Reune tudo desde a 1.9.1 (ultima publicada).
+
+### Novo
+- Black list compacta: /wd bl (ou /wdbl). Janelinha que fica aberta: abas PvE/PvP, "+ Alvo" adiciona o alvo atual, clique nos vistos recentemente adiciona, +M marca a macro (um por vez), A+ liga o alerta do nome, x remove, "Pegar macro" poe a macro no cursor. Botao "-" minimiza para uma barrinha so com o nome WATCHDOG BL (estilo goldbar) e "+" maximiza. Posicao, aba e estado minimizado ficam salvos. Tambem abre pelo painel de atalhos (Shortcuts).
+- Janela de loot: /wd lootgoldbar (ou /wdlootgoldbar). Ouro/h, ouro da sessao, tempo, item mais caro e dois paineis acoplados (itens e ouro recebidos). Botao "Nova sessao", minimizar os paineis e redimensionar pelo cantinho.
+- Historico da AH com filtros em lista (tipo e periodo).
+
+### Alterado
+- Ouro da sessao e ouro/hora passam a ser o valor farmado, fixo na hora do loot: ouro dropado, ouro de quest e itens de loot/skinning/pickpocket/quest pelo valor no momento (maior entre vendor e AH, regra da %). Vender, gastar, usar ou postar na AH nao altera. Acaba o ouro/h que caia a 0.
+- Detalhe do mob (PvE) usa o mesmo criterio de valor da lista, com a marca "AH" quando o valor vem do leilao.
+- Nome colorido da black list fica em cima do nome branco da nameplate, e o de jogador PvP mostra nome e sobrenome.
+- O addon liga o log de taint (taintLog) sozinho para diagnostico.
+- CC e DoT removidos.
+- Wizard: botoes Back/Next nao ficam mais um sobre o outro.
+
+### Corrigido
+- Barra de acao desabilitando/erro "SetCooldown ... Secret values" (causa: o Shift refazia o tooltip chamando o OnEnter de botoes da Blizzard, contaminando a barra).
+- PvP no Forever: nome e sobrenome ("Kheza Mvp") na lista e nos vistos; a macro tenta "Nome Sobrenome" (o /targetexact Nome-Sobrenome nao acha ninguem).
+- Erro de Lua por GetItemInfo inexistente neste cliente.
+
 ## 1.9.18
 
 ### Novo: /wd bl (Black list compacta)
