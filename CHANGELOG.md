@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.11
+
+### Novo (diagnostico)
+- O Watchdog liga sozinho o registro de taint (Logs/taint.log) em todo login, porque o jogo desliga essa opcao a cada reinicio. Serve para descobrir qual addon quebra a barra de acao em combate. `/wd taint` mostra o estado; `/wd taint off` desliga e `/wd taint on` religa.
+
 ## 1.9.10
 
 ### Corrigido

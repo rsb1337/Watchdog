@@ -4,7 +4,7 @@
 local ADDON, WD = ...
 local function GetItemInfo(...) local f = _G.GetItemInfo or (C_Item and C_Item.GetItemInfo); if f then return f(...) end end
 local L = WD.L
-WD.version = "1.9.10"
+WD.version = "1.9.11"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -1929,8 +1929,18 @@ function WD:PrintStatus()
         s.xpMsgs, s.slainMsgs, s.honorMsgs, s.moneyMsgs, s.mobKills, s.pvpKills, s.drops))
 end
 
+-- Diagnostico: liga o registro de taint (Logs/taint.log) em todo login, pois o jogo o desliga sozinho.
+function WD:ApplyTaintLog()
+    if not WatchdogDB or WatchdogDB.taintLog == false then return end
+    pcall(SetCVar, "taintLog", "2")
+    if tostring(GetCVar and GetCVar("taintLog") or "") ~= "2" and ConsoleExec then
+        pcall(ConsoleExec, "taintLog 2")
+    end
+end
+
 local function Init()
     WatchdogDB = WatchdogDB or {}
+    WD:ApplyTaintLog()
     WatchdogDB.items = WatchdogDB.items or {}
     WatchdogDB.rareNames = WatchdogDB.rareNames or {}
     WatchdogDB.watch = WatchdogDB.watch or {}

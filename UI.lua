@@ -3051,6 +3051,12 @@ SlashCmdList.WATCHDOG = function(msg)
         WD:Toggle("black")
     elseif cmd == "ah" or cmd == "leilao" or cmd == "leilão" then
         WD:Toggle("ah")
+    elseif cmd == "taint" then
+        local a = rest:lower()
+        if a == "off" then WatchdogDB.taintLog = false; pcall(SetCVar, "taintLog", "0")
+        elseif a == "on" then WatchdogDB.taintLog = nil; WD:ApplyTaintLog() end
+        print("|cffffd100Watchdog:|r taintLog = " .. tostring(GetCVar and GetCVar("taintLog")) ..
+            "  (auto-on at login: " .. ((WatchdogDB.taintLog == false) and "off" or "on") .. ")  - /wd taint on|off")
     elseif cmd == "bordas" or cmd == "borders" or cmd == "contornos" then
         WD:ToggleBorders()
         print("|cffffd100Watchdog:|r " .. L.inv_borders .. ": " .. (WD:BorderOpt().on and L.cfg_on or L.cfg_off))
