@@ -1383,7 +1383,7 @@ end
 ---------------------------------------------------------------------------
 local cmdF
 local CMD_KEYS = { "help_open", "help_config", "help_new", "help_report", "help_hist", "help_cons", "help_session", "help_wizard", "help_inv", "help_alerts",
-    "help_premium", "help_watch", "help_unwatch", "help_nameplates", "help_minimap", "help_goldbar", "help_expbar",
+    "help_premium", "help_bl", "help_watch", "help_unwatch", "help_nameplates", "help_minimap", "help_goldbar", "help_expbar",
     "help_sgoldbar", "help_igoldbar", "help_lootgoldbar", "help_lang", "help_status", "help_debug" }
 
 local function BuildCommands()

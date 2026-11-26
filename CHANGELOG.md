@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.9.18
+
+### Novo: /wd bl (Black list compacta)
+- Janelinha pequena que pode ficar aberta (arrasta para qualquer lugar; posicao e se estava aberta ficam salvas). Comandos: /wd bl ou /wdbl.
+- Abas PvE e PvP. Botao "+ Alvo" adiciona o alvo atual na lista certa (jogador vai para PvP com nome e sobrenome). Clicar num nome de "vistos recentemente" adiciona. Cada nome da lista tem +M (marca para a macro; so um por vez) e x (remove). Botao "Pegar macro" coloca a macro no cursor para arrastar para a barra.
+
+### Corrigido
+- Nome colorido na nameplate de jogador da lista PvP agora mostra nome e sobrenome ("Kheza Mvp"), nao so o primeiro nome.
+
 ## 1.9.17
 
 ### Corrigido (black list PvP)

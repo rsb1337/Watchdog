@@ -1214,7 +1214,8 @@ function WD:ColorOneNameplate(unit, np)
     local kind = WD:IsUnitWatched(unit)
     local o = overlays[np]
     if kind then
-        local name = WD.Clean(UnitName(unit))
+        local short, full = WD:UnitNames(unit)
+        local name = (kind == "pvp") and WD:DisplayName(full, "pvp") or short   -- PvP: "Nome Sobrenome"
         if type(name) ~= "string" then if o then HideOverlay(o) end return end
         o = o or GetOverlay(np)
         local col = (kind == "pvp") and (WatchdogDB.watchColorPvp or C.purple) or (WatchdogDB.watchColor or C.blue)
@@ -2927,7 +2928,214 @@ function BuildAHPanel(host)
     return p
 end
 
+---------------------------------------------------------------------------
+-- Black list compacta (/wd bl): janelinha que fica aberta; adicionar e macrar rapido
+---------------------------------------------------------------------------
+local blFrame
+local function CreateBL()
+    local W, SEEN_N, LIST_N, SEEN_H, LIST_H = 236, 4, 6, 17, 20
+    local f = CreateFrame("Frame", "WatchdogBL", UIParent, BT)
+    f:SetSize(W, 286)
+    local st = WatchdogDB.bl
+    f.kind = (st and st.kind == "pvp") and "pvp" or "pve"
+    if st and st.pos then f:SetPoint(st.pos[1], UIParent, st.pos[2], st.pos[3], st.pos[4])
+    else f:SetPoint("CENTER", UIParent, "CENTER", 300, 0) end
+    f:SetFrameStrata("MEDIUM")
+    f:SetClampedToScreen(true)
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    Flat(f, C.card, C.border, 0.96)
+
+    function f.Save()
+        local s = WatchdogDB.bl or {}
+        s.shown = f:IsShown(); s.kind = f.kind
+        local p, _, rp, x, y = f:GetPoint()
+        if p then s.pos = { p, rp, x, y } end
+        WatchdogDB.bl = s
+    end
+    f:SetScript("OnDragStart", function(self) self:StartMoving() end)
+    f:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); f.Save() end)
+
+    local function Btn(parent, text, w, h)
+        local b = CreateFrame("Button", nil, parent, BT)
+        b:SetSize(w, h or 18)
+        b:EnableMouse(true)
+        b:RegisterForClicks("LeftButtonUp")
+        Flat(b, C.tile, C.border, 1)
+        b.text = FS(b, 11, C.dim, "CENTER"); b.text:SetPoint("CENTER"); b.text:SetText(text)
+        b:SetScript("OnEnter", function(self) self.text:SetTextColor(C.text[1], C.text[2], C.text[3]) end)
+        b:SetScript("OnLeave", function(self) if not self.active then self.text:SetTextColor(C.dim[1], C.dim[2], C.dim[3]) end end)
+        return b
+    end
+
+    local title = FS(f, 11, C.dim, "LEFT")
+    title:SetPoint("TOPLEFT", 10, -8); title:SetText("WATCHDOG  BL")
+    local close = Btn(f, "x", 16, 16)
+    close:SetPoint("TOPRIGHT", -4, -4)
+    close:SetScript("OnClick", function() f:Hide(); f.Save() end)
+    local tabPvp = Btn(f, "PvP", 36, 16)
+    tabPvp:SetPoint("RIGHT", close, "LEFT", -3, 0)
+    local tabPve = Btn(f, "PvE", 36, 16)
+    tabPve:SetPoint("RIGHT", tabPvp, "LEFT", -2, 0)
+
+    -- acoes rapidas
+    local addBtn = Btn(f, L.bl_target, 74, 20)
+    addBtn:SetPoint("TOPLEFT", 8, -28)
+    local macroBtn = Btn(f, L.black_macro, 92, 20)
+    macroBtn:SetPoint("LEFT", addBtn, "RIGHT", 4, 0)
+
+    local seenLbl = FS(f, 10, C.mute, "LEFT")
+    seenLbl:SetPoint("TOPLEFT", 10, -54); seenLbl:SetText(L.black_seen)
+    local seenRows = {}
+    for r = 1, SEEN_N do
+        local b = CreateFrame("Button", nil, f)
+        b:SetHeight(SEEN_H)
+        b:SetPoint("TOPLEFT", 8, -68 - (r - 1) * SEEN_H)
+        b:SetPoint("TOPRIGHT", -8, -68 - (r - 1) * SEEN_H)
+        b.text = FS(b, 12, C.text, "LEFT"); b.text:SetPoint("LEFT", 4, 0)
+        b.hl = b:CreateTexture(nil, "BACKGROUND"); b.hl:SetAllPoints(); b.hl:SetColorTexture(1, 1, 1, 0.07); b.hl:Hide()
+        b:SetScript("OnEnter", function(self) self.hl:Show() end)
+        b:SetScript("OnLeave", function(self) self.hl:Hide() end)
+        b:SetScript("OnClick", function(self)
+            if self.name and WD:AddWatch(self.name, f.kind) then f.Refresh() end
+        end)
+        seenRows[r] = b
+    end
+    local seenEmpty = FS(f, 11, C.mute, "LEFT")
+    seenEmpty:SetPoint("TOPLEFT", 12, -70); seenEmpty:SetText(L.black_seen_empty)
+
+    local listLbl = FS(f, 10, C.mute, "LEFT")
+    listLbl:SetPoint("TOPLEFT", 10, -68 - SEEN_N * SEEN_H - 6)
+    local listTop = 68 + SEEN_N * SEEN_H + 20
+    local listRows = {}
+    for r = 1, LIST_N do
+        local row = CreateFrame("Frame", nil, f)
+        row:SetHeight(LIST_H)
+        row:SetPoint("TOPLEFT", 8, -listTop - (r - 1) * LIST_H)
+        row:SetPoint("TOPRIGHT", -8, -listTop - (r - 1) * LIST_H)
+        local x = Btn(row, "x", 18, 18); x:SetPoint("RIGHT", 0, 0)
+        x:SetScript("OnClick", function()
+            if row.name then WD:RemoveWatch(row.name, f.kind); f.Refresh() end
+        end)
+        local m = Btn(row, "+M", 28, 18); m:SetPoint("RIGHT", x, "LEFT", -3, 0)
+        m:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:SetText(L.black_macro_tip); GameTooltip:Show()
+        end)
+        m:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        m:SetScript("OnClick", function()
+            if row.name then WD:ToggleMacroName(row.name); f.Refresh() end
+        end)
+        row.m = m
+        row.label = FS(row, 12, C.text, "LEFT")
+        row.label:SetPoint("LEFT", 4, 0); row.label:SetPoint("RIGHT", m, "LEFT", -4, 0)
+        row.label:SetWordWrap(false)
+        row:Hide()
+        listRows[r] = row
+    end
+    local listEmpty = FS(f, 11, C.mute, "LEFT")
+    listEmpty:SetPoint("TOPLEFT", 12, -listTop - 2); listEmpty:SetText(L.black_empty)
+    f.offset = 0
+    f:EnableMouseWheel(true)
+    f:SetScript("OnMouseWheel", function(self, delta)
+        local n = #WD:WatchList(self.kind)
+        self.offset = math.max(0, math.min(math.max(0, n - LIST_N), self.offset - delta))
+        f.Refresh()
+    end)
+
+    local function Tab(b, on, col)
+        b.active = on
+        if on then
+            Flat(b, C.tile, col, 1); b.text:SetTextColor(1, 1, 1)
+        else
+            Flat(b, C.tile, C.border, 1); b.text:SetTextColor(C.dim[1], C.dim[2], C.dim[3])
+        end
+    end
+
+    function f.Refresh()
+        if not f:IsShown() then return end
+        local kind = f.kind
+        Tab(tabPve, kind == "pve", C.blue); Tab(tabPvp, kind == "pvp", C.purple)
+        local accent = kind == "pvp" and C.purple or C.blue
+        local list = WD:WatchList(kind)
+        listLbl:SetText(string.format(L.black_list, #list))
+        f.offset = math.max(0, math.min(math.max(0, #list - LIST_N), f.offset))
+        for r = 1, LIST_N do
+            local name = list[f.offset + r]
+            local row = listRows[r]
+            if name then
+                row.name = name
+                row.label:SetText(WD:DisplayName(name, kind)); row.label:SetTextColor(accent[1], accent[2], accent[3])
+                local on = WD:InMacro(name)
+                row.m.text:SetText(on and "M" or "+M")
+                local c = on and C.green or C.dim
+                row.m.text:SetTextColor(c[1], c[2], c[3]); row.m.active = on
+                row:Show()
+            else row.name = nil; row:Hide() end
+        end
+        listEmpty:SetShown(#list == 0)
+        local shown = 0
+        for _, name in ipairs(WD:SeenList(kind)) do
+            if shown >= SEEN_N then break end
+            if not WD:IsWatched(name, kind) then
+                shown = shown + 1
+                local b = seenRows[shown]
+                b.name = name; b.text:SetText(WD:DisplayName(name, kind)); b:Show()
+            end
+        end
+        for r = shown + 1, SEEN_N do seenRows[r].name = nil; seenRows[r]:Hide() end
+        seenEmpty:SetShown(shown == 0)
+    end
+
+    local function SetKind(k) f.kind = k; f.offset = 0; f.Refresh(); f.Save() end
+    tabPve:SetScript("OnClick", function() SetKind("pve") end)
+    tabPvp:SetScript("OnClick", function() SetKind("pvp") end)
+
+    -- adiciona o alvo atual (jogador vai pra PvP com nome e sobrenome; o resto vai pra PvE)
+    addBtn:SetScript("OnClick", function()
+        local ok = pcall(function()
+            if not UnitExists("target") then error("none") end
+            local short, full = WD:UnitNames("target")
+            if not short then error("none") end
+            local kind = UnitIsPlayer("target") and "pvp" or "pve"
+            if kind == "pve" and UnitPlayerControlled and UnitPlayerControlled("target") then error("none") end
+            WD:AddWatch(kind == "pvp" and full or short, kind)
+            f.kind = kind; f.offset = 0
+        end)
+        if not ok then print("|cff7ec8ffWatchdog:|r " .. L.bl_no_target) end
+        f.Refresh(); f.Save()
+    end)
+    macroBtn:SetScript("OnClick", function()
+        local ok, why = WD:PickupTargetMacro()
+        if ok then
+            print("|cff7ec8ffWatchdog:|r " .. L.black_macro_ok)
+        else
+            print("|cff7ec8ffWatchdog:|r " .. (why == "combat" and L.black_macro_combat or L.black_macro_full))
+        end
+    end)
+
+    local acc = 0
+    f:SetScript("OnUpdate", function(_, el)
+        acc = acc + el
+        if acc >= 1 then acc = 0; f.Refresh() end
+    end)
+    f:SetScript("OnShow", function() f.Refresh() end)
+    return f
+end
+
+function WD:ToggleBL()
+    if not blFrame then
+        blFrame = CreateBL(); blFrame:Show()
+    else
+        blFrame:SetShown(not blFrame:IsShown())
+    end
+    blFrame.Refresh(); blFrame.Save()
+end
+
 local function RestoreBars()
+    if WatchdogDB.bl and WatchdogDB.bl.shown and not blFrame then
+        blFrame = CreateBL(); blFrame:Show()
+    end
     local saved = WatchdogDB.bars
     if not saved then return end
     for key, st in pairs(saved) do
@@ -3074,6 +3282,8 @@ SlashCmdList.WATCHDOG = function(msg)
         if WD.ToggleCommands then WD:ToggleCommands() end
     elseif cmd == "config" or cmd == "opcoes" or cmd == "opções" or cmd == "menu" or cmd == "assist" then
         if WD.ToggleConfig then WD:ToggleConfig() end
+    elseif cmd == "bl" or cmd == "blc" then
+        WD:ToggleBL()
     elseif cmd == "premium" or cmd == "lista" or cmd == "watchlist" or cmd == "blacklist" or cmd == "black" then
         WD:Toggle("black")
     elseif cmd == "ah" or cmd == "leilao" or cmd == "leilão" then
@@ -3140,7 +3350,7 @@ SlashCmdList.WATCHDOG = function(msg)
         print("|cffffd100Watchdog|r " .. L.help_header)
         for _, line in ipairs({
             L.help_open, L.help_new, L.help_report, L.help_hist, L.help_cons, L.help_session, L.help_wizard, L.help_inv,
-            L.help_alerts, L.help_premium, L.help_watch, L.help_unwatch, L.help_nameplates,
+            L.help_alerts, L.help_premium, L.help_bl, L.help_watch, L.help_unwatch, L.help_nameplates,
             L.help_minimap, L.help_goldbar, L.help_expbar, L.help_sgoldbar, L.help_igoldbar, L.help_lootgoldbar,
             L.help_config, L.help_lang, L.help_status, L.help_debug,
         }) do print(line) end
@@ -3157,6 +3367,9 @@ SlashCmdList.WATCHDOGEXPBAR = function() ToggleBar("exp") end
 
 SLASH_WATCHDOGSGOLDBAR1 = "/wdsgoldbar"
 SlashCmdList.WATCHDOGSGOLDBAR = function() ToggleBar("sgold") end
+
+SLASH_WATCHDOGBL1 = "/wdbl"
+SlashCmdList.WATCHDOGBL = function() WD:ToggleBL() end
 
 SLASH_WATCHDOGLOOTGOLDBAR1 = "/wdlootgoldbar"
 SlashCmdList.WATCHDOGLOOTGOLDBAR = function() ToggleBar("loot") end
