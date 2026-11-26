@@ -1452,7 +1452,7 @@ function BuildBlackPanel(host)
                 local name = list[col.offset + r]
                 local row = col.rows[r]
                 if name then
-                    row.name = name; row.label:SetText(name); row:Show()
+                    row.name = name; row.label:SetText(WD:DisplayName(name, kind)); row:Show()
                     local on = WD:InMacro(name)
                     row.m.text:SetText(on and "M" or "+M")
                     local c = on and C.green or C.mute
@@ -1473,7 +1473,7 @@ function BuildBlackPanel(host)
                     shown = shown + 1
                     local b = col.seenRows[shown]
                     b.name = name
-                    b.text:SetText(name)
+                    b.text:SetText(WD:DisplayName(name, kind))
                     b:Show()
                 end
             end

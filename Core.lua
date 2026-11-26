@@ -4,7 +4,7 @@
 local ADDON, WD = ...
 local function GetItemInfo(...) local f = _G.GetItemInfo or (C_Item and C_Item.GetItemInfo); if f then return f(...) end end
 local L = WD.L
-WD.version = "1.9.16"
+WD.version = "1.9.17"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -1682,17 +1682,30 @@ local function WatchTable(kind, create)
     return WatchdogDB[key]
 end
 
--- Nome curto e nome completo da unidade. Jogador de OUTRO reino: completo = "Nome-Reino" (o /targetexact precisa disso).
+-- Nome curto e nome completo da unidade. No Forever o jogador tem nome e sobrenome ("Kheza Mvp"):
+-- o jogo entrega o sobrenome onde o Classic entregava o reino (2o retorno de UnitName).
+-- Chave completa = "Nome-Sobrenome" (mesmo formato do Spy).
 function WD:UnitNames(unit)
-    local short = Clean(UnitName(unit))
+    local short, sur = UnitName(unit)
+    short, sur = Clean(short), Clean(sur)
     if type(short) ~= "string" or short == "" then return nil end
     local full = short
-    if UnitIsPlayer and UnitIsPlayer(unit) and GetUnitName then
-        local ok, f = pcall(GetUnitName, unit, true)
-        f = ok and Clean(f) or nil
-        if type(f) == "string" and f ~= "" then full = f end
+    if UnitIsPlayer and UnitIsPlayer(unit) and type(sur) == "string" and sur ~= "" then
+        full = short .. "-" .. sur
     end
     return short, full
+end
+
+-- Como o nome aparece na tela: jogador PvP "Nome-Sobrenome" vira "Nome Sobrenome".
+function WD:DisplayName(name, kind)
+    if kind == "pvp" and type(name) == "string" then return (name:gsub("%-", " ")) end
+    return name
+end
+
+-- Chave de lista: espacos viram hifen no PvP ("Kheza Mvp" -> "Kheza-Mvp").
+local function KeyName(name, kind)
+    if kind == "pvp" then return (name:gsub("%s+", "-")) end
+    return name
 end
 
 -- kind: "pve" (mobs, padrao) ou "pvp" (jogadores)
@@ -1700,7 +1713,7 @@ function WD:IsWatched(name, kind)
     name = Clean(name)
     if type(name) ~= "string" then return false end
     local t = WatchTable(kind)
-    return t ~= nil and t[name:lower()] ~= nil
+    return t ~= nil and t[KeyName(name, kind):lower()] ~= nil
 end
 
 -- Retorna "pve"/"pvp" se a unidade esta em alguma lista (jogador -> lista PvP; resto -> lista PvE).
@@ -1718,6 +1731,7 @@ end
 function WD:AddWatch(name, kind)
     name = TrimName(name)
     if name == "" then return false end
+    name = KeyName(name, kind)
     WatchTable(kind, true)[name:lower()] = name
     if WD.RefreshNameplates then WD:RefreshNameplates() end
     WD:UpdateTargetMacro()
@@ -1726,6 +1740,7 @@ end
 
 function WD:RemoveWatch(name, kind)
     name = TrimName(name)
+    if name ~= "" then name = KeyName(name, kind) end
     local t = WatchTable(kind)
     if name == "" or not t then return end
     t[name:lower()] = nil
@@ -1754,16 +1769,28 @@ function WD:ToggleMacroName(name)
     WD:SyncMacro(false)
 end
 function WD:MacroBody()
-    local names = {}
+    local blocks = {}
     for _, kind in ipairs({ "pve", "pvp" }) do
         for _, n in ipairs(WD:WatchList(kind)) do
-            if WD:InMacro(n) then names[#names + 1] = n end
+            if WD:InMacro(n) then
+                local first, second = n:match("^([^%-]+)%-(.+)$")
+                if kind == "pvp" and first then
+                    -- No Forever "/targetexact Nome-Sobrenome" nao acha ninguem: tenta "Nome Sobrenome" primeiro
+                    blocks[#blocks + 1] = table.concat({
+                        "/cleartarget",
+                        "/targetexact " .. first .. " " .. second,
+                        "/targetexact [noexists] " .. n,
+                        "/targetexact [noexists] " .. first,
+                    }, "\n")
+                else
+                    blocks[#blocks + 1] = "/targetexact " .. n
+                end
+            end
         end
     end
     local tail = "\n/cleartarget [dead]"
     local lines, len, dropped = {}, #tail, 0
-    for _, n in ipairs(names) do
-        local line = "/targetexact " .. n
+    for _, line in ipairs(blocks) do
         if len + #line + 1 > 255 then dropped = dropped + 1
         else lines[#lines + 1] = line; len = len + #line + 1 end
     end
@@ -1833,7 +1860,7 @@ function WD:RememberSeen(unit)
         if not l then l = {}; WatchdogDB.seen[kind] = l end
         if l[1] and l[1]:lower() == name:lower() then return end
         for i = #l, 1, -1 do
-            if l[i]:lower() == name:lower() then table.remove(l, i) end
+            if l[i]:lower() == name:lower() or (kind == "pvp" and l[i]:lower() == short:lower()) then table.remove(l, i) end
         end
         table.insert(l, 1, name)
         while #l > SEEN_MAX do table.remove(l) end

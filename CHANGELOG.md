@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.9.17
+
+### Corrigido (black list PvP)
+- No Forever o jogador tem nome e sobrenome (ex.: "Kheza Mvp"). O jogo entrega o sobrenome no segundo retorno de UnitName, e o addon so lia o primeiro nome. Agora os vistos recentemente e a lista PvP guardam e mostram o nome completo ("Kheza Mvp"). Internamente a chave e "Kheza-Mvp" (mesmo formato do Spy); voce pode digitar com espaco que ele converte.
+- A macro do PvP deixou de usar so "/targetexact Nome-Sobrenome" (que nao acha ninguem no Forever). Agora tenta "Nome Sobrenome", depois "Nome-Sobrenome" e por fim so o primeiro nome. Mob PvE continua igual.
+- O destaque na nameplate e o alerta (A) reconhecem o nome completo e tambem entradas antigas so com o primeiro nome. A entrada antiga so com o primeiro nome sai dos vistos quando o nome completo aparece.
+- Remove o ajuste de reino da 1.9.16, que lia o lugar errado.
+
 ## 1.9.16
 
 ### Corrigido (black list)
