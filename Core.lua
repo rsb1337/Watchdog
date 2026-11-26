@@ -4,7 +4,7 @@
 local ADDON, WD = ...
 local function GetItemInfo(...) local f = _G.GetItemInfo or (C_Item and C_Item.GetItemInfo); if f then return f(...) end end
 local L = WD.L
-WD.version = "1.9.13"
+WD.version = "1.9.14"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -138,9 +138,9 @@ local function EntryFromBucket(s, start, stop)
         deaths = pvp.deaths or 0,
         honor = pvp.honor or 0,
         money = s.money or 0,
-        income = s.income, spent = s.spent,
-        bagDelta = (s.bagStart and s.bagLast) and (s.bagLast - s.bagStart) or nil,
-        bagDeltaA = (s.bagStartA and s.bagLastA) and (s.bagLastA - s.bagStartA) or nil,
+        income = s.farmCoin or 0, spent = s.spent,
+        bagDelta = s.farmItems or 0,
+        bagDeltaA = s.farmItemsA or 0,
         value = WD:BucketValue(s),
         t = t,
     }
@@ -173,6 +173,7 @@ local function NewSession()
     s.questXP, s.quests = 0, 0
     s.t = NewTimes()
     s.income, s.spent = 0, 0
+    s.farmCoin, s.farmItems, s.farmItemsA = 0, 0, 0
     WatchdogCharDB.session = s
     WatchdogCharDB.sessionStart = time()
     WatchdogCharDB.sessionLast = time()
@@ -193,11 +194,12 @@ function WD:RecordOf(e, now)
     return r
 end
 
--- Ouro da sessao (4 numeros):
---   puro      = moedas que entraram na carteira (loot dos mobs, vendas, quests...)
---   inventario= variacao do valor dos itens (bolsas/banco/correio/em transito), cada um pelo maior entre vendor e AH
---   ah        = parte do inventario valorizada pela AH (sessoes antigas: + preco dos itens listados)
---   provavel  = puro + inventario (+ listados, so em sessoes antigas)
+-- Ouro farmado da sessao (a partir da 1.9.14):
+--   puro      = ouro dropado + recompensa de ouro de quest
+--   inventario= valor dos itens de loot/skinning/pickpocket/quest NO MOMENTO DO DROP (maior entre vendor e AH, regra da %)
+--   ah        = parte do inventario valorizada pela AH
+--   provavel  = puro + inventario (nunca subtrai; vender/usar/postar o item nao altera)
+-- (sessoes antigas salvas usam a conta anterior: variacao das bolsas)
 function WD:GoldSummary(r)
     if r.income == nil then
         return { probable = r.value or 0, legacy = true }
@@ -221,9 +223,9 @@ function WD:SessionProbable()
     if not s then return 0 end
     local ahP, ahV, ahVA = 0, 0, 0   -- listar na AH nao altera o ouro da sessao
     local r = {
-        income = s.income or 0,
-        bagDelta = (s.bagStart and s.bagLast) and (s.bagLast - s.bagStart) or nil,
-        bagDeltaA = (s.bagStartA and s.bagLastA) and (s.bagLastA - s.bagStartA) or nil,
+        income = s.farmCoin or 0,
+        bagDelta = s.farmItems or 0,
+        bagDeltaA = s.farmItemsA or 0,
         ahPrice = ahP, ahVendor = ahV, ahVendorA = ahVA,
     }
     return WD:GoldSummary(r).probable
@@ -1136,10 +1138,12 @@ local function SnapshotXP()
 end
 
 local lastQuestTurn, questExact = -100, false
-local function OnQuestTurnedIn(_, xp)
+local function OnQuestTurnedIn(_, xp, money)
     local s = WatchdogCharDB.session
     s.quests = (s.quests or 0) + 1
     lastQuestTurn = GetTime()
+    WD._questUntil = GetTime() + 4                      -- itens recebidos logo apos entregar contam como recompensa
+    if type(money) == "number" and money > 0 and WD.FarmAdd then WD:FarmAdd(money) end
     if type(xp) == "number" and xp > 0 then
         s.questXP = (s.questXP or 0) + xp
         questExact = true
@@ -1548,6 +1552,7 @@ local function OnMoneyMessage(msg)
     local name = (lastLootName and GetTime() - lastLootTime <= MONEY_WINDOW) and lastLootName or nil
     Dbg("Dinheiro:", copper, name or "(sem mob)")
     if WD.FeedGold then pcall(WD.FeedGold, WD, copper) end
+    if WD.FarmAdd then WD:FarmAdd(copper) end
     Each(function(b)
         b.money = (b.money or 0) + copper
         if name then
@@ -1561,6 +1566,29 @@ end
 ---------------------------------------------------------------------------
 -- Feed de loot da sessao (janela /wd lootgoldbar): itens e ouro recebidos
 ---------------------------------------------------------------------------
+-- Ouro farmado da sessao: soma so o que ENTRA do farm (ouro dropado, recompensa de quest, itens de
+-- loot/skinning/pickpocket/quest pelo valor no momento do drop). Nunca subtrai: o que voce faz depois com
+-- o item (vender, usar, postar na AH) nao altera o valor farmado.
+function WD:FarmAdd(coin, items, itemsA)
+    local s = WatchdogCharDB and WatchdogCharDB.session
+    if not s then return end
+    s.farmCoin = (s.farmCoin or 0) + (tonumber(coin) or 0)
+    s.farmItems = (s.farmItems or 0) + (tonumber(items) or 0)
+    s.farmItemsA = (s.farmItemsA or 0) + (tonumber(itemsA) or 0)
+end
+
+local function FarmItem(id, qty, tries)
+    local unit, viaAH = WD:UnitValue(id)
+    unit = tonumber(unit) or 0
+    -- item ainda sem dados no cache: tenta de novo em instantes (ate 3 vezes)
+    if unit == 0 and not GetItemInfo(id) and (tries or 0) < 3 and C_Timer and C_Timer.After then
+        C_Timer.After(2, function() pcall(FarmItem, id, qty, (tries or 0) + 1) end)
+        return
+    end
+    local v = unit * qty
+    WD:FarmAdd(0, v, viaAH and v or 0)
+end
+
 local FEED_MAX = 40
 local function Feed()
     local c = WatchdogCharDB
@@ -1614,11 +1642,11 @@ local function LootPatterns()
     lootPats = {}
     for _, g in ipairs({ "LOOT_ITEM_SELF_MULTIPLE", "LOOT_ITEM_PUSHED_SELF_MULTIPLE" }) do
         local p = _G[g] and GlobalPattern(_G[g])
-        if p then lootPats[#lootPats + 1] = { p, true } end
+        if p then lootPats[#lootPats + 1] = { p, true, g == "LOOT_ITEM_SELF_MULTIPLE" } end
     end
     for _, g in ipairs({ "LOOT_ITEM_SELF", "LOOT_ITEM_PUSHED_SELF" }) do
         local p = _G[g] and GlobalPattern(_G[g])
-        if p then lootPats[#lootPats + 1] = { p, false } end
+        if p then lootPats[#lootPats + 1] = { p, false, g == "LOOT_ITEM_SELF" } end
     end
     return lootPats
 end
@@ -1631,7 +1659,13 @@ local function OnLootMessage(msg)
         local a, b = msg:match(e[1])
         if a then
             local id = tonumber(a:match("item:(%d+)"))
-            if id then WD:FeedItem(id, e[2] and tonumber(b) or 1) end
+            if id then
+                local qty = e[2] and tonumber(b) or 1
+                WD:FeedItem(id, qty)
+                -- "You receive loot" = loot de verdade (mob, skinning, pickpocket, bau); "You receive item" so conta
+                -- se acabou de entregar uma quest (recompensa). Compra, craft e correio ficam de fora.
+                if e[3] or (WD._questUntil and GetTime() <= WD._questUntil) then pcall(FarmItem, id, qty) end
+            end
             return
         end
     end

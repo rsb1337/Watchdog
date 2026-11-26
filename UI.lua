@@ -3060,15 +3060,10 @@ SlashCmdList.WATCHDOG = function(msg)
         print("|cffffd100Watchdog:|r " .. L.inv_borders .. ": " .. (WD:BorderOpt().on and L.cfg_on or L.cfg_off))
     elseif cmd == "goldinfo" then
         local sv = WatchdogCharDB and WatchdogCharDB.session or {}
-        local ahP, ahV = 0, 0
-        local g = WD:GoldSummary({
-            income = sv.income or 0,
-            bagDelta = (sv.bagStart and sv.bagLast) and (sv.bagLast - sv.bagStart) or nil,
-            bagDeltaA = (sv.bagStartA and sv.bagLastA) and (sv.bagLastA - sv.bagStartA) or nil,
-            ahPrice = ahP, ahVendor = ahV, ahVendorA = 0 })
-        print(string.format("|cffffd100Watchdog gold:|r income=%d bagStart=%d bagLast=%d delta=%d ahPosted=%d ahVendor=%d -> raw=%d (mostrado=%d)",
-            sv.income or 0, sv.bagStart or -1, sv.bagLast or -1, (sv.bagLast or 0) - (sv.bagStart or 0), ahP or 0, ahV or 0,
-            (g.coin or 0) + (g.inv or 0) + (ahP or 0), g.probable or 0))
+        local g = WD:GoldSummary({ income = sv.farmCoin or 0, bagDelta = sv.farmItems or 0, bagDeltaA = sv.farmItemsA or 0,
+            ahPrice = 0, ahVendor = 0, ahVendorA = 0 })
+        print(string.format("|cffffd100Watchdog gold:|r ouro dropado+quest=%d  itens(valor no drop)=%d  (da AH=%d)  -> sessao=%d",
+            sv.farmCoin or 0, sv.farmItems or 0, sv.farmItemsA or 0, g.probable or 0))
     elseif cmd == "scan" then
         WD:StartAHScan()
     elseif cmd == "nameplates" or cmd == "plaquinhas" or cmd == "alcance" then

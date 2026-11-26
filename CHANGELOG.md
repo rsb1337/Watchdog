@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.9.14
+
+### Alterado (ouro da sessao e ouro por hora)
+- Novo calculo: o ouro farmado soma so o que entra do farm. Entram o ouro dropado, a recompensa de ouro de quest e o valor dos itens de loot, skinning, pickpocket, bau e recompensa de quest, cada item pelo valor NO MOMENTO DO DROP (maior entre vendor e AH, com a regra da porcentagem).
+- Nunca subtrai: vender, gastar, usar, mandar por correio ou postar na AH nao altera o valor farmado. Comprar, craftar e receber de outro jogador nao entram. O balanco de entrada e saida de ouro da AH fica so na aba Historico da AH.
+- Isso acaba com o ouro por hora que caia a 0 ou variava por causa da comparacao das bolsas.
+- Sessoes antigas ja salvas ficam como estavam. Na sessao em andamento quando atualizar, a conta recomeca do zero: use "Nova sessao" para comecar limpo.
+- /wd goldinfo mostra os numeros da conta.
+
 ## 1.9.13
 
 ### Corrigido
