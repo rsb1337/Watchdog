@@ -4,7 +4,7 @@
 local ADDON, WD = ...
 local function GetItemInfo(...) local f = _G.GetItemInfo or (C_Item and C_Item.GetItemInfo); if f then return f(...) end end
 local L = WD.L
-WD.version = "1.9.12"
+WD.version = "1.9.13"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -144,7 +144,8 @@ local function EntryFromBucket(s, start, stop)
         value = WD:BucketValue(s),
         t = t,
     }
-    e.ahPrice, e.ahVendor, e.ahVendorA = WD:AHTotals(start)
+    -- Itens listados na AH nao entram mais no ouro (o valor ja vem do maior entre vendor e AH): fica 0.
+    e.ahPrice, e.ahVendor, e.ahVendorA = 0, 0, 0
     return e
 end
 
@@ -194,9 +195,9 @@ end
 
 -- Ouro da sessao (4 numeros):
 --   puro      = moedas que entraram na carteira (loot dos mobs, vendas, quests...)
---   inventario= variacao do valor de VENDOR dos itens (bolsas/banco/correio), sem os itens que estao na AH
---   ah        = preco que voce colocou nos itens listados na AH nesta sessao
---   provavel  = puro + inventario + ah
+--   inventario= variacao do valor dos itens (bolsas/banco/correio/em transito), cada um pelo maior entre vendor e AH
+--   ah        = parte do inventario valorizada pela AH (sessoes antigas: + preco dos itens listados)
+--   provavel  = puro + inventario (+ listados, so em sessoes antigas)
 function WD:GoldSummary(r)
     if r.income == nil then
         return { probable = r.value or 0, legacy = true }
@@ -218,7 +219,7 @@ end
 function WD:SessionProbable()
     local s = WatchdogCharDB.session
     if not s then return 0 end
-    local ahP, ahV, ahVA = WD:AHTotals(WatchdogCharDB.sessionStart)
+    local ahP, ahV, ahVA = 0, 0, 0   -- listar na AH nao altera o ouro da sessao
     local r = {
         income = s.income or 0,
         bagDelta = (s.bagStart and s.bagLast) and (s.bagLast - s.bagStart) or nil,

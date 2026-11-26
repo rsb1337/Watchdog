@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.13
+
+### Corrigido
+- Ouro da sessao / ouro por hora: listar um item na Auction House nao mexe mais na conta. Antes o addon ainda tirava o valor do item e somava o preco pedido (jeito antigo, de antes do scan da AH), o que contava o mesmo item de dois jeitos. Agora o item continua valendo o maior entre vendor e AH ate vender, e o ouro entra quando chega. Sessoes antigas ja salvas ficam como estavam.
+
 ## 1.9.12
 
 ### Alterado

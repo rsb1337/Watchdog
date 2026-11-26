@@ -3060,7 +3060,7 @@ SlashCmdList.WATCHDOG = function(msg)
         print("|cffffd100Watchdog:|r " .. L.inv_borders .. ": " .. (WD:BorderOpt().on and L.cfg_on or L.cfg_off))
     elseif cmd == "goldinfo" then
         local sv = WatchdogCharDB and WatchdogCharDB.session or {}
-        local ahP, ahV = WD:AHTotals(WatchdogCharDB.sessionStart)
+        local ahP, ahV = 0, 0
         local g = WD:GoldSummary({
             income = sv.income or 0,
             bagDelta = (sv.bagStart and sv.bagLast) and (sv.bagLast - sv.bagStart) or nil,
