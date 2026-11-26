@@ -1177,12 +1177,29 @@ end
 -- jogo "tainted" e desabilitava a barra de acao em PvP. Agora o destaque e um texto PROPRIO,
 -- num frame do addon, ancorado acima da nameplate.
 local overlays = {}   -- [frame da nameplate] = { f = frame, fs = texto }
+-- Nome branco original da nameplate (so lemos/ancoramos: nao escrevemos nada na tabela da Blizzard, sem taint).
+local function WhiteName(np)
+    local uf = np.UnitFrame
+    local n = uf and (uf.name or uf.Name)
+    if n and n.GetObjectType and n:GetObjectType() == "FontString" then return n end
+    return nil
+end
+
+local function ShowWhite(o)
+    if o.wn then pcall(o.wn.SetAlpha, o.wn, 1); o.wn = nil end
+end
+
+local function HideOverlay(o)
+    o.f:Hide()
+    ShowWhite(o)
+end
+
 local function GetOverlay(np)
     local o = overlays[np]
     if o then return o end
     local f = CreateFrame("Frame", nil, UIParent)
     f:SetSize(160, 14)
-    f:SetFrameStrata("BACKGROUND")
+    f:SetFrameStrata("MEDIUM")          -- acima das plaquinhas, para cobrir o nome branco
     local fs = FS(f, 11, C.text, "CENTER", "OUTLINE")
     fs:SetPoint("CENTER", f, "CENTER", 0, 0)
     o = { f = f, fs = fs }
@@ -1198,16 +1215,28 @@ function WD:ColorOneNameplate(unit, np)
     local o = overlays[np]
     if kind then
         local name = WD.Clean(UnitName(unit))
-        if type(name) ~= "string" then if o then o.f:Hide() end return end
+        if type(name) ~= "string" then if o then HideOverlay(o) end return end
         o = o or GetOverlay(np)
         local col = (kind == "pvp") and (WatchdogDB.watchColorPvp or C.purple) or (WatchdogDB.watchColor or C.blue)
         o.fs:SetTextColor(col[1], col[2], col[3])
         o.fs:SetText(name)
         o.f:ClearAllPoints()
-        o.f:SetPoint("BOTTOM", np, "TOP", 0, 2)
+        local wn = WhiteName(np)
+        if wn then
+            -- exatamente em cima do nome branco (mesma fonte e tamanho) e esconde o branco enquanto o azul esta ali
+            local ok, font, size, flags = pcall(wn.GetFont, wn)
+            if ok and font and tonumber(size) then pcall(o.fs.SetFont, o.fs, font, size, flags or "OUTLINE") end
+            o.f:SetPoint("CENTER", wn, "CENTER", 0, 0)
+            if o.wn ~= wn then ShowWhite(o) end
+            pcall(wn.SetAlpha, wn, 0)
+            o.wn = wn
+        else
+            ShowWhite(o)
+            o.f:SetPoint("BOTTOM", np, "TOP", 0, 2)
+        end
         o.f:Show()
     elseif o then
-        o.f:Hide()
+        HideOverlay(o)
     end
 end
 
@@ -1228,7 +1257,7 @@ function WD:RefreshNameplates()
     end
     -- plaquinhas que sumiram (ou foram recicladas): esconde o destaque
     for np, o in pairs(overlays) do
-        if not active[np] then o.f:Hide() end
+        if not active[np] then HideOverlay(o) end
     end
 end
 

@@ -4,7 +4,7 @@
 local ADDON, WD = ...
 local function GetItemInfo(...) local f = _G.GetItemInfo or (C_Item and C_Item.GetItemInfo); if f then return f(...) end end
 local L = WD.L
-WD.version = "1.9.15"
+WD.version = "1.9.16"
 WD.debug = false
 WD.failed = {}
 WD.stats = { mobKills = 0, pvpKills = 0, pvpDeaths = 0, xpMsgs = 0, slainMsgs = 0, honorMsgs = 0, drops = 0, moneyMsgs = 0 }
@@ -1682,6 +1682,19 @@ local function WatchTable(kind, create)
     return WatchdogDB[key]
 end
 
+-- Nome curto e nome completo da unidade. Jogador de OUTRO reino: completo = "Nome-Reino" (o /targetexact precisa disso).
+function WD:UnitNames(unit)
+    local short = Clean(UnitName(unit))
+    if type(short) ~= "string" or short == "" then return nil end
+    local full = short
+    if UnitIsPlayer and UnitIsPlayer(unit) and GetUnitName then
+        local ok, f = pcall(GetUnitName, unit, true)
+        f = ok and Clean(f) or nil
+        if type(f) == "string" and f ~= "" then full = f end
+    end
+    return short, full
+end
+
 -- kind: "pve" (mobs, padrao) ou "pvp" (jogadores)
 function WD:IsWatched(name, kind)
     name = Clean(name)
@@ -1693,10 +1706,10 @@ end
 -- Retorna "pve"/"pvp" se a unidade esta em alguma lista (jogador -> lista PvP; resto -> lista PvE).
 function WD:IsUnitWatched(unit)
     local ok, res = pcall(function()
-        local name = Clean(UnitName(unit))
-        if type(name) ~= "string" then return nil end
+        local name, full = WD:UnitNames(unit)
+        if not name then return nil end
         local kind = UnitIsPlayer(unit) and "pvp" or "pve"
-        if WD:IsWatched(name, kind) then return kind end
+        if WD:IsWatched(name, kind) or (full ~= name and WD:IsWatched(full, kind)) then return kind end
         return nil
     end)
     return ok and res or nil
@@ -1810,10 +1823,11 @@ function WD:RememberSeen(unit)
     pcall(function()
         if not unit or not UnitExists(unit) or UnitIsUnit(unit, "player") then return end
         if not UnitCanAttack("player", unit) then return end
-        local name = Clean(UnitName(unit))
-        if type(name) ~= "string" or name == "" then return end
+        local short, full = WD:UnitNames(unit)
+        if not short then return end
         local kind = UnitIsPlayer(unit) and "pvp" or "pve"
         if kind == "pve" and UnitPlayerControlled and UnitPlayerControlled(unit) then return end
+        local name = (kind == "pvp") and full or short      -- PvP guarda "Nome-Reino" quando e de outro reino
         WatchdogDB.seen = WatchdogDB.seen or {}
         local l = WatchdogDB.seen[kind]
         if not l then l = {}; WatchdogDB.seen[kind] = l end
@@ -1864,9 +1878,10 @@ local function CheckWatchAlert(unit)
     if not unit or not UnitExists(unit) or UnitIsDead(unit) then return end
     local t = WatchdogDB.alertNames
     if not t or not next(t) then return end
-    local guid, name = Clean(UnitGUID(unit)), Clean(UnitName(unit))
-    if type(guid) ~= "string" or type(name) ~= "string" then return end
-    if not t[name:lower()] then return end
+    local guid = Clean(UnitGUID(unit))
+    local name, full = WD:UnitNames(unit)
+    if type(guid) ~= "string" or not name then return end
+    if not (t[name:lower()] or (full and t[full:lower()])) then return end
     if not WD:IsUnitWatched(unit) then return end
     local key = "A" .. guid
     if rareSeen[key] then return end

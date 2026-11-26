@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.9.16
+
+### Corrigido (black list)
+- Nome colorido da nameplate volta a ficar exatamente em cima do nome branco (mesma fonte e tamanho), em vez de flutuar acima da plaquinha. O nome branco fica escondido enquanto o colorido esta ali e volta ao normal quando o alvo sai da lista. Nada e escrito na tabela da Blizzard (sem taint).
+- PvP: jogadores de outro reino agora sao guardados como Nome-Reino nos "vistos recentemente" e na lista, e a macro usa /targetexact Nome-Reino. Antes ia so o nome e a macro nao achava quem e de outro reino. O alerta (A) e o destaque na nameplate reconhecem os dois formatos (nome curto ou Nome-Reino).
+- Nomes ja salvos so com o nome continuam funcionando; para a macro achar jogador de outro reino, remova e adicione de novo a partir dos "vistos recentemente".
+
 ## 1.9.15
 
 ### Corrigido
